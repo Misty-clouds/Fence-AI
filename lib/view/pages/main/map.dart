@@ -38,6 +38,11 @@ class _MapPageState extends ConsumerState<MapPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       print('🗺️ MapPage: Post frame callback executing');
       final provider = ref.read(mapProvider);
+      // Reset map state for new research
+      provider.clearCurrentDrawing();
+      provider.clearAllPolygons();
+      provider.clearMarkers();
+      provider.clearSelectedLocationData();
       provider.getCurrentLocation();
     });
   }
@@ -355,18 +360,36 @@ class _MapPageState extends ConsumerState<MapPage> {
     double longitude,
     double area,
   ) async {
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AIAnalysisLoadingDialog(),
-    );
-    
     try {
       print('🤖 ============ STARTING AI ANALYSIS ============');
       print('🤖 Location: Lat=$latitude, Lng=$longitude');
       print('🤖 Area: $area square meters');
       print('🤖 Conversation ID: ${widget.conversationId}');
+      
+      // Get current user ID
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // Send user message first
+      print('📤 Sending user message...');
+      final messagesService = ref.read(researchMessagesProvider.notifier);
+      await messagesService.sendTextMessage(
+        conversationId: widget.conversationId!,
+        researcherId: currentUser.id,
+        content: 'Research the best use case and development for the plot of land selected on the map',
+      );
+      print('✅ User message sent successfully');
+    
+    // Show loading dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AIAnalysisLoadingDialog(),
+      );
+    }
       
       // Get enriched location data
       final mapService = MapService();
@@ -400,12 +423,22 @@ class _MapPageState extends ConsumerState<MapPage> {
       print(aiResponse.substring(0, aiResponse.length > 500 ? 500 : aiResponse.length));
       print('📝 ============================================');
       
-      // Get current user ID
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      if (currentUser == null) {
-        throw Exception('User not authenticated');
-      }
-      print('👤 Current User ID: ${currentUser.id}');
+      // Prepare location header
+      final areaInAcres = area / 4046.86;
+      final locationHeader = '''
+**Location Analysis**
+
+**📍 Location:** ${enrichedData['formatted_address'] ?? 'Lat: ${latitude.toStringAsFixed(6)}, Lng: ${longitude.toStringAsFixed(6)}'}
+
+**📏 Land Size:** ${areaInAcres.toStringAsFixed(2)} acres (${(area / 10000).toStringAsFixed(2)} hectares / ${area.toStringAsFixed(0)} sq meters)
+
+---
+
+''';
+      
+      // Concatenate location details with AI response
+      final fullResponse = locationHeader + aiResponse;
+      print('📝 Full response with location header prepared');
       
       // Save AI response as a received message using the service directly
       print('💾 Saving AI response to database...');
@@ -413,10 +446,9 @@ class _MapPageState extends ConsumerState<MapPage> {
       print('💾 Content Type: ${ContentType.text.toJson()}');
       print('💾 Message Type: received');
       
-      final messagesService = ref.read(researchMessagesProvider.notifier);
       final savedMessage = await messagesService.receiveMessage(
         conversationId: widget.conversationId!,
-        content: aiResponse,
+        content: fullResponse,
         contentType: ContentType.text,
       );
       
@@ -432,7 +464,7 @@ class _MapPageState extends ConsumerState<MapPage> {
         
         // Show analysis in bottom sheet
         if (mounted) {
-          await _showAnalysisBottomSheet(aiResponse, area);
+          await _showAnalysisBottomSheet(fullResponse, area);
         }
       } else {
         print('❌ Failed to save message - savedMessage is null');

@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import 'dart:convert';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:fence_ai/constants/styles/color.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fence_ai/core/providers/providers.dart';
 import 'package:fence_ai/core/models/research_messages_model.dart';
 import 'package:fence_ai/auth/providers/auth_provider.dart';
+import 'package:fence_ai/core/services/chat_ai_service.dart';
 
 class ResearchChat extends ConsumerStatefulWidget {
   final String? conversationId;
@@ -76,16 +78,8 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
     // Scroll to bottom
     _scrollToBottom();
 
-    // Simulate AI response
-    Future.delayed(const Duration(seconds: 1), () async {
-      await messagesNotifier.receiveMessage(
-        conversationId: widget.conversationId!,
-        content: "combines intuitive map interactions with advanced AI insights to help developers, investors, and landowners make data-driven decisions on-the-go.\n\nKey Objectives\n• Deliver a mobile-first, touch-optimized experience for land discovery and analysis\n• Provide instant AI-powered recommendations for optimal land utilization\n• Enable seamless plot selection and evaluation through intuitive gestures\n• Launch MVP within 3-4 weeks with core functionality",
-        contentType: ContentType.text,
-      );
-
-      _scrollToBottom();
-    });
+    // Generate AI response
+    _generateAIResponse(text);
   }
 
   void _scrollToBottom() {
@@ -98,6 +92,63 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
         );
       }
     });
+  }
+
+  Future<void> _generateAIResponse(String userMessage) async {
+    try {
+      print('💬 Generating AI response for: $userMessage');
+      
+      // Get conversation history
+      final messagesState = ref.read(researchMessagesProvider);
+      final conversationHistory = ChatAIService.buildConversationHistory(
+        messagesState.messages,
+        maxMessages: 10,
+      );
+      
+      // Generate AI response
+      final chatAI = ChatAIService();
+      final result = await chatAI.generateChatResponse(
+        userMessage: userMessage,
+        conversationHistory: conversationHistory,
+      );
+      
+      String aiResponse = result['response'] as String;
+      final locations = result['locations'] as List<Map<String, dynamic>>;
+      
+      // Clean response text (remove location markers)
+      aiResponse = chatAI.cleanResponseText(aiResponse);
+      
+      // Store locations as metadata if present
+      String finalResponse = aiResponse;
+      if (locations.isNotEmpty) {
+        // Add locations metadata at the end (will be parsed later)
+        finalResponse = '$aiResponse\n\n[LOCATIONS_DATA]${jsonEncode(locations)}[/LOCATIONS_DATA]';
+      }
+      
+      print('✅ AI response generated with ${locations.length} locations');
+      
+      // Save AI response
+      final messagesNotifier = ref.read(researchMessagesProvider.notifier);
+      await messagesNotifier.receiveMessage(
+        conversationId: widget.conversationId!,
+        content: finalResponse,
+        contentType: ContentType.text,
+      );
+      
+      _scrollToBottom();
+    } catch (e) {
+      print('❌ Error generating AI response: $e');
+      
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating AI response: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -171,7 +222,8 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final isFirstAIMessage = index == 0 && 
+                    // First AI message is the second message (index 1) after user's research request
+                    final isFirstAIMessage = index == 1 && 
                         messages[index].messageType == MessageContentType.received;
                     return _buildMessageBubble(messages[index], isFirstAIMessage);
                   },
@@ -327,6 +379,26 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   Widget _buildMessageBubble(ResearchMessageModel message, bool isFirstAIMessage) {
     final isUser = message.messageType == MessageContentType.sent;
     
+    // Extract locations data from message content
+    String displayContent = message.content ?? '';
+    List<Map<String, dynamic>>? messageLocations;
+    
+    if (!isUser && displayContent.contains('[LOCATIONS_DATA]')) {
+      final regex = RegExp(r'\[LOCATIONS_DATA\](.*?)\[/LOCATIONS_DATA\]', dotAll: true);
+      final match = regex.firstMatch(displayContent);
+      if (match != null) {
+        try {
+          final locationsJson = match.group(1);
+          messageLocations = (jsonDecode(locationsJson!) as List)
+              .map((e) => e as Map<String, dynamic>)
+              .toList();
+          displayContent = displayContent.replaceAll(regex, '').trim();
+        } catch (e) {
+          print('Error parsing locations: $e');
+        }
+      }
+    }
+    
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -347,13 +419,13 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
               children: [
                 isUser
                     ? Text(
-                        message.content ?? '',
+                        displayContent,
                         style: AppTextStyles.regularText(
                           color: Colors.white,
                         ).copyWith(height: 1.5),
                       )
                     : MarkdownBody(
-                        data: message.content ?? '',
+                        data: displayContent,
                         styleSheet: MarkdownStyleSheet(
                           h1: AppTextStyles.titleMedium().copyWith(
                             fontSize: 20,
@@ -385,7 +457,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                         ),
                       ),
                 
-                // Show map preview for first AI message
+                // Show map preview for first AI message with researched location
                 if (isFirstAIMessage && !isUser) ...[
                   const SizedBox(height: 16),
                   Consumer(
@@ -408,6 +480,12 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                       return _buildMapPreview(conversation.locationData!);
                     },
                   ),
+                ],
+                
+                // Show locations map preview for messages with location data
+                if (!isUser && messageLocations != null && messageLocations.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildLocationsMapPreview(messageLocations),
                 ],
               ],
             ),
@@ -697,6 +775,277 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
           style: AppTextStyles.subTitle(),
         ),
       ],
+    );
+  }
+
+  Widget _buildLocationsMapPreview(List<Map<String, dynamic>> locations) {
+    return InkWell(
+      onTap: () => _showLocationsMapBottomSheet(locations),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary1.withOpacity(0.3)),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: AppColors.primary1.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    Icons.location_on,
+                    color: AppColors.primary1,
+                    size: 32,
+                  ),
+                  if (locations.length > 1)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: AppColors.secondary2,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${locations.length}',
+                          style: AppTextStyles.regularTextBold().copyWith(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    locations.length == 1 ? 'Location Mentioned' : '${locations.length} Locations Mentioned',
+                    style: AppTextStyles.regularTextBold().copyWith(
+                      color: AppColors.text1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    locations.length == 1
+                        ? locations[0]['name']
+                        : locations.map((l) => l['name']).take(2).join(', ') +
+                            (locations.length > 2 ? '...' : ''),
+                    style: AppTextStyles.subTitle(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Tap to view on map',
+                    style: AppTextStyles.subTitle().copyWith(
+                      color: AppColors.primary1,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              color: AppColors.primary1,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLocationsMapBottomSheet(List<Map<String, dynamic>> locations) {
+    if (locations.isEmpty) return;
+    
+    // Calculate bounds to show all locations
+    double minLat = locations[0]['latitude'];
+    double maxLat = locations[0]['latitude'];
+    double minLng = locations[0]['longitude'];
+    double maxLng = locations[0]['longitude'];
+    
+    for (final loc in locations) {
+      minLat = minLat < loc['latitude'] ? minLat : loc['latitude'];
+      maxLat = maxLat > loc['latitude'] ? maxLat : loc['latitude'];
+      minLng = minLng < loc['longitude'] ? minLng : loc['longitude'];
+      maxLng = maxLng > loc['longitude'] ? maxLng : loc['longitude'];
+    }
+    
+    final centerLat = (minLat + maxLat) / 2;
+    final centerLng = (minLng + maxLng) / 2;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary1.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.location_on,
+                        color: AppColors.primary1,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            locations.length == 1 ? 'Location' : '${locations.length} Locations',
+                            style: AppTextStyles.titleMedium().copyWith(
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Mentioned by AI',
+                            style: AppTextStyles.subTitle(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const Divider(height: 1),
+              
+              // Map view
+              Expanded(
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(centerLat, centerLng),
+                    zoom: locations.length == 1 ? 14.0 : 11.0,
+                  ),
+                  markers: locations.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final loc = entry.value;
+                    return Marker(
+                      markerId: MarkerId('location_$index'),
+                      position: LatLng(loc['latitude'], loc['longitude']),
+                      infoWindow: InfoWindow(
+                        title: loc['name'],
+                      ),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        index == 0 ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
+                      ),
+                    );
+                  }).toSet(),
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                ),
+              ),
+              
+              // Locations list
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      offset: const Offset(0, -2),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Locations:',
+                      style: AppTextStyles.regularTextBold().copyWith(
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...locations.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final loc = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: index == 0 ? Colors.green : Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                loc['name'],
+                                style: AppTextStyles.regularText(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
