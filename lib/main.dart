@@ -1,5 +1,8 @@
 import 'package:fence_ai/auth/pages/authgate.dart';
+import 'package:fence_ai/auth/pages/sign_in.dart';
 import 'package:fence_ai/auth/pages/sign_up.dart';
+import 'package:fence_ai/auth/pages/forgot_password.dart';
+import 'package:fence_ai/auth/pages/reset_password.dart';
 import 'package:fence_ai/auth/services/deeplink_service.dart';
 import 'package:fence_ai/view/pages/onboarding/role_selection.dart';
 import 'package:fence_ai/constants/styles/theme.dart';
@@ -55,9 +58,35 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const AuthGate(),
-      routes: {
-        '/role-selection': (context) => const RoleSelectionPage(),
-        '/signup': (context) => const SignUpPage(),
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/sign-in':
+            return MaterialPageRoute(
+              builder: (context) => const SignInPage(),
+            );
+          case '/role-selection':
+            return MaterialPageRoute(
+              builder: (context) => const RoleSelectionPage(),
+            );
+          case '/signup':
+            return MaterialPageRoute(
+              builder: (context) => const SignUpPage(),
+            );
+          case '/forgot-password':
+            return MaterialPageRoute(
+              builder: (context) => const ForgotPasswordPage(),
+            );
+          case '/reset-password':
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(
+              builder: (context) => ResetPasswordPage(
+                email: args?['email'],
+                token: args?['token'],
+              ),
+            );
+          default:
+            return null;
+        }
       },
     );
   }

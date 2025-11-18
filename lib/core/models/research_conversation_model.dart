@@ -29,14 +29,24 @@ class ResearchConversationModel {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+    final Map<String, dynamic> json = {
       'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
       'title': title,
       'location_data': locationData,
       'researcher_id': researcherId,
     };
+    
+    // Only include id if it's not empty (for updates)
+    if (id.isNotEmpty) {
+      json['id'] = id;
+    }
+    
+    // Only include updated_at if it exists
+    if (updatedAt != null) {
+      json['updated_at'] = updatedAt!.toIso8601String();
+    }
+    
+    return json;
   }
 
   ResearchConversationModel copyWith({

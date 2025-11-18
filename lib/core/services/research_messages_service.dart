@@ -57,14 +57,21 @@ class ResearchMessagesService {
   // Create new message
   Future<ResearchMessageModel> createMessage(Map<String, dynamic> messageData) async {
     try {
+      print('💾 [ResearchMessagesService] Creating message...');
+      print('💾 Message Data: $messageData');
+      
       final response = await _supabase
           .from('research_messages')
           .insert(messageData)
           .select()
           .single();
       
+      print('✅ [ResearchMessagesService] Message created successfully');
+      print('✅ Response: $response');
+      
       return ResearchMessageModel.fromJson(response);
     } catch (e) {
+      print('❌ [ResearchMessagesService] Failed to create message: $e');
       throw Exception('Failed to create message: $e');
     }
   }
@@ -95,13 +102,22 @@ class ResearchMessagesService {
     ContentType contentType = ContentType.text,
   }) async {
     try {
-      return await createMessage({
+      print('📨 [ResearchMessagesService] Receiving message...');
+      print('📨 Conversation ID: $conversationId');
+      print('📨 Content Length: ${content.length} characters');
+      print('📨 Content Type: ${contentType.toJson()}');
+      
+      final message = await createMessage({
         'conversation_id': conversationId,
         'content': content,
         'content_type': contentType.toJson(),
         'message_type': 'received',
       });
+      
+      print('✅ [ResearchMessagesService] Message received and saved');
+      return message;
     } catch (e) {
+      print('❌ [ResearchMessagesService] Failed to receive message: $e');
       throw Exception('Failed to receive message: $e');
     }
   }

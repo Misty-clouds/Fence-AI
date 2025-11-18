@@ -55,15 +55,34 @@ class ResearchConversationsService {
 
   // Create new conversation
   Future<ResearchConversationModel> createConversation(ResearchConversationModel conversation) async {
+    print('🔍 SERVICE: Starting createConversation');
+    print('🔍 SERVICE: Conversation data to insert:');
+    
     try {
+      final jsonData = conversation.toJson();
+      print('🔍 SERVICE: JSON data: $jsonData');
+      
+      print('🔍 SERVICE: Inserting into Supabase...');
       final response = await _supabase
           .from('research_conversations')
-          .insert(conversation.toJson())
+          .insert(jsonData)
           .select()
           .single();
       
+      print('✅ SERVICE: Successfully inserted, response: $response');
       return ResearchConversationModel.fromJson(response);
-    } catch (e) {
+    } on PostgrestException catch (e) {
+      print('❌ SERVICE: PostgrestException caught');
+      print('❌ SERVICE: Error code: ${e.code}');
+      print('❌ SERVICE: Error message: ${e.message}');
+      print('❌ SERVICE: Error details: ${e.details}');
+      print('❌ SERVICE: Error hint: ${e.hint}');
+      throw Exception('Database error: ${e.message} (Code: ${e.code})');
+    } catch (e, stackTrace) {
+      print('❌ SERVICE: Error during insert');
+      print('❌ SERVICE: Error type: ${e.runtimeType}');
+      print('❌ SERVICE: Error message: $e');
+      print('❌ SERVICE: Stack trace: $stackTrace');
       throw Exception('Failed to create conversation: $e');
     }
   }

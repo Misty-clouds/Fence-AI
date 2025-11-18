@@ -225,6 +225,96 @@ class MapService {
     }
   }
 
+  // Get enriched location data for AI analysis (similar to the TypeScript implementation)
+  Future<Map<String, dynamic>> getEnrichedLocationDataForAI({
+    required double latitude,
+    required double longitude,
+    double? area, // in square meters
+  }) async {
+    try {
+      print('🗺️ [MapService] Getting enriched location data for AI...');
+      print('🗺️ Coordinates: $latitude, $longitude');
+      print('🗺️ Area: $area sqm');
+      
+      // 1. Get exact location details (address, city/village type) using Geocoding API
+      final geocodeUrl = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json?latlng=$latitude,$longitude&key=$_apiKey',
+      );
+      print('🗺️ Calling Geocoding API...');
+      final geocodeResponse = await http.get(geocodeUrl);
+      final geocodeData = json.decode(geocodeResponse.body);
+      print('🗺️ Geocoding API Status: ${geocodeData['status']}');
+
+      Map<String, dynamic> locationDetails = {};
+      
+      if (geocodeData['status'] == 'OK' && (geocodeData['results'] as List).isNotEmpty) {
+        final addressComponents = geocodeData['results'][0]['address_components'] as List;
+        final formattedAddress = geocodeData['results'][0]['formatted_address'];
+
+        String? city;
+        String? village;
+        List<String> roadAccessibility = [];
+
+        for (var component in addressComponents) {
+          final types = component['types'] as List;
+          
+          if (types.contains('locality')) {
+            city = component['long_name'];
+          } else if (types.contains('sublocality') || types.contains('neighborhood')) {
+            village = component['long_name'];
+          } else if (types.contains('route') || types.contains('highway')) {
+            roadAccessibility.add(component['long_name']);
+          }
+        }
+
+        locationDetails = {
+          'formatted_address': formattedAddress,
+          'city': city ?? village,
+          'is_city_or_village': city != null ? 'city' : (village != null ? 'village' : 'unknown'),
+          'main_roads': roadAccessibility.isNotEmpty 
+              ? roadAccessibility.join(', ') 
+              : 'No major roads identified nearby.',
+        };
+        print('✅ Location details extracted: ${locationDetails['city']}');
+      }
+
+      // 2. Get nearby businesses and establishments using Nearby Search API
+      final nearbyPlaces = <Map<String, dynamic>>[];
+      final nearbySearchUrl = Uri.parse(
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=$latitude,$longitude&radius=5000&key=$_apiKey',
+      );
+      print('🗺️ Calling Nearby Search API (5km radius)...');
+      final nearbySearchResponse = await http.get(nearbySearchUrl);
+      final nearbySearchData = json.decode(nearbySearchResponse.body);
+      print('🗺️ Nearby Search API Status: ${nearbySearchData['status']}');
+
+      if (nearbySearchData['status'] == 'OK' && (nearbySearchData['results'] as List).isNotEmpty) {
+        for (var place in nearbySearchData['results']) {
+          nearbyPlaces.add({
+            'name': place['name'],
+            'types': (place['types'] as List).join(', '),
+            'vicinity': place['vicinity'],
+          });
+        }
+        print('✅ Found ${nearbyPlaces.length} nearby places');
+      }
+
+      final result = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'area': area,
+        ...locationDetails,
+        'nearby_places': nearbyPlaces,
+      };
+      
+      print('✅ [MapService] Enriched location data complete');
+      return result;
+    } catch (e) {
+      print('❌ [MapService] Error getting enriched location data: $e');
+      throw Exception('Error getting enriched location data: $e');
+    }
+  }
+
   // Extract and structure location data
   Map<String, dynamic> _extractLocationData(
     Map<String, dynamic> result,

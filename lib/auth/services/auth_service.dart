@@ -23,32 +23,29 @@ class AuthService {
     String? role,
   ) async {
     try {
+      // Step 1: Create the auth user
       final AuthResponse authResponse = await supabase.auth.signUp(
         email: email,
         password: password,
-        data: {'role': role ?? 'user', 'name': name},
       );
 
       if (authResponse.user == null) {
         throw Exception('Failed to create auth user');
       }
 
-      // Step 2: Create the user profile in public.users table
-
-      await supabase.from('users').insert({
-        'id': authResponse.user!.id,
-        'email': email,
-        'name': name,
-        'role': role ?? 'user',
+      // Step 2: Create the user profile using the database function
+      // This bypasses RLS and ensures the user profile is created
+      await supabase.rpc('create_user_profile', params: {
+        'user_id': authResponse.user!.id,
+        'user_email': email,
+        'user_name': name,
+        'user_role': role ?? 'user',
       });
 
       return authResponse;
     } on AuthException {
       rethrow;
     } catch (e) {
-      try {
-        await supabase.auth.signOut();
-      } catch (_) {}
       throw Exception('Failed to sign up user: $e');
     }
   }
@@ -131,6 +128,45 @@ class AuthService {
       rethrow;
     } catch (e) {
       throw Exception('Failed to update password: $e');
+    }
+  }
+
+  /// Send password reset email
+  Future<void> resetPasswordForEmail(String email) async {
+    try {
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: 'io.supabase.fenceai://reset-password',
+      );
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw Exception('Failed to send reset email: $e');
+    }
+  }
+
+  /// Verify OTP and update password
+  Future<void> verifyOtpAndResetPassword({
+    required String email,
+    required String token,
+    required String newPassword,
+  }) async {
+    try {
+      // Verify the OTP token
+      await supabase.auth.verifyOTP(
+        type: OtpType.recovery,
+        token: token,
+        email: email,
+      );
+
+      // Update the password
+      await supabase.auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw Exception('Failed to reset password: $e');
     }
   }
 

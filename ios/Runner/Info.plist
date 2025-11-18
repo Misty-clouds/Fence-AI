@@ -56,5 +56,17 @@
 			</array>
 		</dict>
 	</array>
+	
+	<!-- Location permissions -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to show you on the map and help you discover properties nearby.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need your location to show you on the map and provide location-based services.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to provide continuous location-based services.</string>
+	
+	<!-- Google Maps API Key - Will be loaded from environment -->
+	<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
 </dict>
 </plist>

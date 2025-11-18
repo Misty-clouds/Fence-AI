@@ -78,17 +78,28 @@ class ResearchConversationsProvider with ChangeNotifier {
   Future<ResearchConversationModel?> createConversation(
     ResearchConversationModel conversation,
   ) async {
+    print('🔍 PROVIDER: Starting createConversation');
+    print('🔍 PROVIDER: Conversation title: ${conversation.title}');
+    print('🔍 PROVIDER: Researcher ID: ${conversation.researcherId}');
+    
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
+      print('🔍 PROVIDER: Calling service createConversation...');
       final newConversation = await _conversationsService.createConversation(conversation);
+      print('✅ PROVIDER: Service returned conversation ID: ${newConversation.id}');
+      
       _conversations.insert(0, newConversation);
       _isLoading = false;
       notifyListeners();
       return newConversation;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ PROVIDER: Error creating conversation');
+      print('❌ PROVIDER: Error: $e');
+      print('❌ PROVIDER: Stack trace: $stackTrace');
+      
       _error = e.toString();
       _isLoading = false;
       notifyListeners();

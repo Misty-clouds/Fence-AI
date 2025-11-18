@@ -1,6 +1,5 @@
 import 'package:fence_ai/constants/styles/color.dart';
 import 'package:fence_ai/constants/styles/text_styles.dart';
-import 'package:fence_ai/view/pages/main/dashboard.dart';
 import 'package:fence_ai/view/pages/onboarding/role_selection.dart';
 import 'package:flutter/material.dart';
 

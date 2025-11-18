@@ -2,6 +2,7 @@ import 'package:fence_ai/auth/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'dart:convert';
 
 class DeepLinkService {
   static final DeepLinkService _instance = DeepLinkService._internal();
@@ -45,6 +46,50 @@ class DeepLinkService {
         // Navigate to home after successful OAuth
         if (context.mounted) {
           Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        }
+      }
+      // Check if this is a password reset callback
+      else if (uri.path == '/reset-password') {
+        // Extract token and type from the fragment
+        final token = uri.queryParameters['token'] ?? 
+                     uri.fragment.split('&')
+                        .firstWhere((e) => e.startsWith('token='), 
+                                   orElse: () => '')
+                        .replaceFirst('token=', '');
+        
+        final type = uri.queryParameters['type'] ??
+                    uri.fragment.split('&')
+                        .firstWhere((e) => e.startsWith('type='), 
+                                   orElse: () => '')
+                        .replaceFirst('type=', '');
+        
+        // Get email from access_token if available
+        String? email;
+        final accessToken = uri.fragment.split('&')
+                               .firstWhere((e) => e.startsWith('access_token='), 
+                                          orElse: () => '')
+                               .replaceFirst('access_token=', '');
+        
+        if (accessToken.isNotEmpty) {
+          // Decode JWT to get email (simplified)
+          try {
+            final payload = accessToken.split('.')[1];
+            final normalized = base64Url.normalize(payload);
+            final decoded = utf8.decode(base64Url.decode(normalized));
+            final Map<String, dynamic> data = jsonDecode(decoded);
+            email = data['email'];
+          } catch (e) {
+            debugPrint('Error decoding token: $e');
+          }
+        }
+        
+        if (context.mounted && token.isNotEmpty && type == 'recovery') {
+          // Navigate to reset password page with token
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/reset-password',
+            (route) => false,
+            arguments: {'email': email, 'token': token},
+          );
         }
       }
     } catch (e) {

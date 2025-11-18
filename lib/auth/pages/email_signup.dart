@@ -1,3 +1,4 @@
+import 'package:fence_ai/auth/pages/sign_in.dart';
 import 'package:fence_ai/auth/providers/auth_provider.dart';
 import 'package:fence_ai/constants/styles/color.dart';
 import 'package:fence_ai/constants/styles/text_styles.dart';
@@ -55,11 +56,11 @@ class _EmailSignUpPageState extends ConsumerState<EmailSignUpPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Account created successfully!'),
+            content: Text('Account created successfully! Please verify your email with the link sent to your inbox, then sign in.'),
             backgroundColor: AppColors.success,
           ),
         );
-        Navigator.pushReplacementNamed(context, '/');
+        Navigator.push(context, MaterialPageRoute(builder:(context) => SignInPage(),));
       }
     } catch (e) {
       if (mounted) {
@@ -280,27 +281,26 @@ class _EmailSignUpPageState extends ConsumerState<EmailSignUpPage> {
 
                 // Sign in link
                 Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Already have an account? ',
-                        style: AppTextStyles.regularText(
-                          color: AppColors.text2,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushNamed(context, '/signin');
-                        },
-                        child: Text(
-                          'Sign In',
-                          style: AppTextStyles.regularTextBold(
-                            color: AppColors.primary1,
+                  child: GestureDetector(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context)=> SignInPage())),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Already have an account? ',
+                          style: AppTextStyles.regularText(
+                            color: AppColors.text2,
                           ),
                         ),
-                      ),
-                    ],
+                        
+                         Text(
+                            'Sign In',
+                            style: AppTextStyles.regularTextBold(
+                              color: AppColors.primary1,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],

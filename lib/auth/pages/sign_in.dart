@@ -1,6 +1,7 @@
 import 'package:fence_ai/auth/providers/auth_provider.dart';
 import 'package:fence_ai/constants/styles/color.dart';
 import 'package:fence_ai/constants/styles/text_styles.dart';
+import 'package:fence_ai/view/pages/main/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,7 +39,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       );
 
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/');
+        Navigator.push(context,MaterialPageRoute(builder: (context)=> Dashboard()));
       }
     } catch (e) {
       if (mounted) {
@@ -194,7 +195,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                   alignment: Alignment.centerLeft,
                   child: GestureDetector(
                     onTap: () {
-                      // TODO: Navigate to forgot password
+                      Navigator.pushNamed(context, '/forgot-password');
                     },
                     child: Text(
                       'Forgot Password',

@@ -22,48 +22,57 @@ class RoleSelectionPage extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.primary1,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Spacer(flex: 1),
-              
-              // Title
-              Text(
-                'Tell us about\nyourself',
-                style: AppTextStyles.labelLarge(color: AppColors.secondary2),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              
-              // Subtitle
-              Text(
-                'We\'ll personalize your experience\nbased on your role',
-                style: AppTextStyles.labelSubtitle(color: AppColors.secondary2),
-                textAlign: TextAlign.center,
-              ),
-              
-              const Spacer(flex: 2),
-              
-              // Role options
-              ...roleOptions.map((role) => Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _RoleOption(
-                  icon: role['icon']!,
-                  label: role['label']!,
-                  value: role['value']!,
-                  selectedRole: selectedRole,
-                  onTap: () {
-                    ref.read(userRoleProvider.notifier).state = role['value'];
-                  },
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 20),
+                    
+                    // Title
+                    Text(
+                      'Tell us about\nyourself',
+                      style: AppTextStyles.labelLarge(color: AppColors.secondary2),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Subtitle
+                    Text(
+                      'We\'ll personalize your experience\nbased on your role',
+                      style: AppTextStyles.labelSubtitle(color: AppColors.secondary2),
+                      textAlign: TextAlign.center,
+                    ),
+                    
+                    const SizedBox(height: 40),
+                    
+                    // Role options
+                    ...roleOptions.map((role) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _RoleOption(
+                        icon: role['icon']!,
+                        label: role['label']!,
+                        value: role['value']!,
+                        selectedRole: selectedRole,
+                        onTap: () {
+                          ref.read(userRoleProvider.notifier).state = role['value'];
+                        },
+                      ),
+                    )),
+                    
+                    const SizedBox(height: 40),
+                  ],
                 ),
-              )),
-              
-              const Spacer(flex: 3),
-              
-              // Continue button
-              SizedBox(
+              ),
+            ),
+            
+            // Continue button - Fixed at bottom
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: SizedBox(
                 width: double.infinity,
                 height: 60,
                 child: ElevatedButton(
@@ -102,9 +111,8 @@ class RoleSelectionPage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

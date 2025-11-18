@@ -93,6 +93,61 @@ Provide a brief assessment (2-3 paragraphs) covering:
     }
   }
 
+  // Generate land development recommendations (similar to TypeScript implementation)
+  Future<String> generateLandDevelopmentRecommendations({
+    required double latitude,
+    required double longitude,
+    double? area, // in square meters
+    required Map<String, dynamic> enrichedLocationData,
+  }) async {
+    try {
+      final nearbyPlaces = enrichedLocationData['nearby_places'] as List? ?? [];
+      final nearbyPlacesText = nearbyPlaces.isEmpty
+          ? 'general businesses and establishment found in the area'
+          : nearbyPlaces
+              .map((place) =>
+                  '- Name: ${place['name']}, Types: ${place['types']}, Vicinity: ${place['vicinity']}')
+              .join('\n');
+
+      final prompt = '''
+Given the following detailed data about a selected location on a map,
+analyze it and suggest what kind of infrastructure or development project can be built there.
+
+Latitude: $latitude
+Longitude: $longitude
+Area: ${area != null ? '$area m²' : 'N/A'}
+Formatted Address: ${enrichedLocationData['formatted_address'] ?? 'N/A'}
+Location Type: ${enrichedLocationData['is_city_or_village'] ?? 'N/A'}
+Main Road Accessibility: ${enrichedLocationData['main_roads'] ?? 'N/A'}
+
+Nearby Businesses and Establishments (within 5km radius):
+$nearbyPlacesText
+
+Using the below criteria:
+ - Business in the neighboring areas (detailed above)
+ - Proximity to village or city (detailed above)
+ - Accessibility to main roads (detailed above)
+ - Government regulations (AI should infer this based on location type)
+ - Environmental impact (AI should infer this)
+ - Needs of the local community (AI should infer this based on nearby establishments and location type)
+ - Neighboring infrastructure and institutions (detailed above)
+ - Establishment (detailed above)
+ - Natural features (AI can infer this based on location)
+and any other relevant factors.
+
+Give 3 to 5 brief project recommendation for the best project or building that can be developed on the marked area, afterwards explain how to go about the development of each ideas.
+
+If the user tries to include what is outside the scope of land researching,
+you should reply with "I can't help you with that. The Model is only built for Land researching"
+''';
+
+      final response = await _callOpenAI(prompt);
+      return response;
+    } catch (e) {
+      throw Exception('Error generating land development recommendations: $e');
+    }
+  }
+
   // Get specific development recommendations
   Future<Map<String, dynamic>> getSpecificDevelopmentRecommendations({
     required double latitude,
@@ -114,14 +169,14 @@ Location Details:
 - Address: ${locationData['formatted_address']}
 - City/Area: ${locationData['city']}, ${locationData['state']}
 - Elevation: ${locationData['elevation']} meters
-- Coordinates: ${latitude}, ${longitude}
+- Coordinates: $latitude, $longitude
 
 Nearby Infrastructure:
 - Businesses: ${(locationData['nearby_businesses'] as List).length} within 2km
 - Schools: ${(locationData['nearby_schools'] as List).length} within 3km
 - Healthcare: ${(locationData['nearby_hospitals'] as List).length} facilities within 5km
 
-${budget != null ? 'Budget: \$${budget}' : ''}
+${budget != null ? 'Budget: \$$budget' : ''}
 ${timeline != null ? 'Timeline: $timeline' : ''}
 
 Please provide detailed recommendations for $developmentType development including:
@@ -272,36 +327,52 @@ Be specific and data-driven in your analysis.
   // Call OpenAI API
   Future<String> _callOpenAI(String prompt) async {
     try {
+      print('🤖 [FenceAIService] Calling OpenAI API...');
+      print('🤖 API Key Present: ${_openAIApiKey != null && _openAIApiKey.isNotEmpty}');
+      print('🤖 Prompt Length: ${prompt.length} characters');
+      
+      final requestBody = {
+        'model': 'gpt-4-turbo-preview',
+        'messages': [
+          {
+            'role': 'system',
+            'content': 'You are an expert land development consultant and real estate analyst with extensive knowledge in urban planning, agriculture, commercial development, and environmental assessment. Provide detailed, actionable insights based on location data and land characteristics.',
+          },
+          {
+            'role': 'user',
+            'content': prompt,
+          },
+        ],
+        'temperature': 0.7,
+        'max_tokens': 3000,
+      };
+      
+      print('🤖 Request Body: ${json.encode(requestBody).substring(0, 200)}...');
+      
       final response = await http.post(
         Uri.parse(_apiUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_openAIApiKey',
         },
-        body: json.encode({
-          'model': 'gpt-4-turbo-preview',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'You are an expert land development consultant and real estate analyst with extensive knowledge in urban planning, agriculture, commercial development, and environmental assessment. Provide detailed, actionable insights based on location data and land characteristics.',
-            },
-            {
-              'role': 'user',
-              'content': prompt,
-            },
-          ],
-          'temperature': 0.7,
-          'max_tokens': 3000,
-        }),
+        body: json.encode(requestBody),
       );
 
+      print('🤖 OpenAI Response Status: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['choices'][0]['message']['content'];
+        final content = data['choices'][0]['message']['content'] as String;
+        print('✅ [FenceAIService] OpenAI response received successfully');
+        print('✅ Response Length: ${content.length} characters');
+        return content;
       } else {
+        print('❌ [FenceAIService] OpenAI API error: ${response.statusCode}');
+        print('❌ Error Body: ${response.body}');
         throw Exception('OpenAI API error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
+      print('❌ [FenceAIService] Exception in _callOpenAI: $e');
       throw Exception('Error calling OpenAI API: $e');
     }
   }

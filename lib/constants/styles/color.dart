@@ -26,5 +26,7 @@ class AppColors {
   static const Color error = Color(0xFFF44336);
   static const Color info = Color(0xFF5DA8A3);
 
+  static const Color bg = Color(0xFFF8F9F6);
+static const Color card = Color(0xFFF2F4F0);
 }  
 
