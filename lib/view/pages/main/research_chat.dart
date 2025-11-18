@@ -31,8 +31,14 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   final ScrollController _scrollController = ScrollController();
 
   final List<String> _suggestedQuestions = [
-    'What is the best place to build a school in lagos?',
-    'Plot analysis for commercial areas',
+    'How do I assess soil quality for agricultural use?',
+    'What are the zoning requirements for commercial development?',
+    'Best practices for sustainable land management',
+    'How to evaluate land for solar farm development?',
+    'What infrastructure is needed for residential development?',
+    'Guide to land drainage and water management systems',
+    'How to conduct environmental impact assessment for land?',
+    'What makes land suitable for organic farming?',
   ];
 
   @override
@@ -240,9 +246,12 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
               
               if (messages.isNotEmpty) return const SizedBox.shrink();
               
+              final screenWidth = MediaQuery.of(context).size.width;
+              final maxContainerWidth = screenWidth * 0.65;
+              
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                height: 60,
+                height: 80,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: _suggestedQuestions.length,
@@ -253,6 +262,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                         onTap: () => _sendMessage(_suggestedQuestions[index]),
                         borderRadius: BorderRadius.circular(25),
                         child: Container(
+                          constraints: BoxConstraints(
+                            maxWidth: maxContainerWidth,
+                          ),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -263,6 +275,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                             child: Text(
                               _suggestedQuestions[index],
                               style: AppTextStyles.regularText(color: AppColors.text1),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),
