@@ -29,6 +29,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _isAILoading = false;
 
   final List<String> _suggestedQuestions = [
     'How do I assess soil quality for agricultural use?',
@@ -101,6 +102,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   }
 
   Future<void> _generateAIResponse(String userMessage) async {
+    setState(() {
+      _isAILoading = true;
+    });
+    
     try {
       print('💬 Generating AI response for: $userMessage');
       
@@ -133,6 +138,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
       
       print('✅ AI response generated with ${locations.length} locations');
       
+      setState(() {
+        _isAILoading = false;
+      });
+      
       // Save AI response
       final messagesNotifier = ref.read(researchMessagesProvider.notifier);
       await messagesNotifier.receiveMessage(
@@ -144,6 +153,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
       _scrollToBottom();
     } catch (e) {
       print('❌ Error generating AI response: $e');
+      
+      setState(() {
+        _isAILoading = false;
+      });
       
       // Show error to user
       if (mounted) {
@@ -226,8 +239,13 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  itemCount: messages.length,
+                  itemCount: messages.length + (_isAILoading ? 1 : 0),
                   itemBuilder: (context, index) {
+                    // Show loading indicator at the end
+                    if (index == messages.length && _isAILoading) {
+                      return _buildLoadingIndicator();
+                    }
+                    
                     // First AI message is the second message (index 1) after user's research request
                     final isFirstAIMessage = index == 1 && 
                         messages[index].messageType == MessageContentType.received;
@@ -538,6 +556,84 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
           color: Colors.grey.shade600,
         ),
       ),
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
+            ),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTypingDot(0),
+                const SizedBox(width: 6),
+                _buildTypingDot(1),
+                const SizedBox(width: 6),
+                _buildTypingDot(2),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypingDot(int index) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('dot_$index${DateTime.now().millisecondsSinceEpoch}'),
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 800),
+      builder: (context, value, child) {
+        final delay = index * 0.15;
+        final adjustedValue = (value - delay).clamp(0.0, 1.0);
+        
+        // Create a bounce effect
+        final opacity = adjustedValue < 0.5 
+            ? 0.4 + (adjustedValue * 1.2) 
+            : 1.0 - (adjustedValue - 0.5) * 1.2;
+        
+        final scale = adjustedValue < 0.5
+            ? 0.8 + (adjustedValue * 0.8)
+            : 1.2 - (adjustedValue - 0.5) * 0.8;
+        
+        return Transform.scale(
+          scale: scale.clamp(0.8, 1.2),
+          child: Opacity(
+            opacity: opacity.clamp(0.4, 1.0),
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: AppColors.primary1,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      },
+      onEnd: () {
+        if (mounted && _isAILoading) {
+          // Small delay before restarting to create continuous animation
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && _isAILoading) {
+              setState(() {}); // Trigger rebuild to restart animation
+            }
+          });
+        }
+      },
     );
   }
 
