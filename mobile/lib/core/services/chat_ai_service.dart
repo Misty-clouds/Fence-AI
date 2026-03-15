@@ -4,7 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ChatAIService {
   static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
-  
+
   final String _apiKey;
 
   ChatAIService() : _apiKey = dotenv.env['OPENAI_API_KEY'] ?? '';
@@ -16,15 +16,12 @@ class ChatAIService {
     required List<Map<String, dynamic>> conversationHistory,
   }) async {
     try {
-      print('💬 ============ CHAT AI SERVICE ============');
-      print('💬 User Message: $userMessage');
-      print('💬 History Length: ${conversationHistory.length} messages');
-
       // Prepare messages for OpenAI
       final messages = [
         {
           'role': 'system',
-          'content': '''You are Fense AI, an expert land research and development consultant. You help users understand and analyze land for various purposes.
+          'content':
+              '''You are Fense AI, an expert land research and development consultant. You help users understand and analyze land for various purposes.
 
 Your scope includes ANYTHING related to land, housing, and property:
 - Land analysis and site evaluation
@@ -56,23 +53,16 @@ STRICT RULES:
 5. Be helpful, professional, and provide actionable insights
 6. If you need more details about the land or property being discussed, ask clarifying questions
 
-Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, you can help. Reject only topics with NO connection to land or property.'''
+Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, you can help. Reject only topics with NO connection to land or property.''',
         },
         ...conversationHistory,
-        {
-          'role': 'user',
-          'content': userMessage,
-        }
+        {'role': 'user', 'content': userMessage},
       ];
 
       final response = await _callOpenAI(messages);
-      
+
       // Extract locations from response
       final locations = _extractLocations(response);
-      
-      print('💬 Response generated: ${response.length} characters');
-      print('💬 Locations detected: ${locations.length}');
-      print('💬 ======================================');
 
       return {
         'response': response,
@@ -80,8 +70,6 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
         'has_locations': locations.isNotEmpty,
       };
     } catch (e, stackTrace) {
-      print('❌ Error in chat AI service: $e');
-      print('❌ Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -91,38 +79,31 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
   List<Map<String, dynamic>> _extractLocations(String text) {
     final locations = <Map<String, dynamic>>[];
     final regex = RegExp(r'\[LOCATION:\s*([^\|]+)\|\s*([\d\.-]+),([\d\.-]+)\]');
-    
+
     final matches = regex.allMatches(text);
     for (final match in matches) {
       final name = match.group(1)?.trim();
       final lat = double.tryParse(match.group(2)?.trim() ?? '');
       final lng = double.tryParse(match.group(3)?.trim() ?? '');
-      
+
       if (name != null && lat != null && lng != null) {
-        locations.add({
-          'name': name,
-          'latitude': lat,
-          'longitude': lng,
-        });
+        locations.add({'name': name, 'latitude': lat, 'longitude': lng});
       }
     }
-    
+
     return locations;
   }
 
   /// Remove location markers from text for clean display
   String cleanResponseText(String text) {
-    return text.replaceAll(
-      RegExp(r'\[LOCATION:\s*[^\]]+\]'),
-      '',
-    ).trim();
+    return text.replaceAll(RegExp(r'\[LOCATION:\s*[^\]]+\]'), '').trim();
   }
 
   /// Call OpenAI API
   Future<String> _callOpenAI(List<Map<String, dynamic>> messages) async {
     try {
       print('🤖 Calling OpenAI Chat API...');
-      
+
       final requestBody = {
         'model': 'gpt-4-turbo-preview',
         'messages': messages,
@@ -133,8 +114,6 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
         'presence_penalty': 0.0,
       };
 
-      print('📤 Request Body: ${jsonEncode(requestBody).substring(0, 500)}...');
-
       final response = await http.post(
         Uri.parse(_baseUrl),
         headers: {
@@ -144,20 +123,17 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
         body: jsonEncode(requestBody),
       );
 
-      print('📥 Response Status: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final content = data['choices'][0]['message']['content'] as String;
-        print('✅ OpenAI response received: ${content.length} characters');
+
         return content;
       } else {
-        print('❌ OpenAI API error: ${response.statusCode}');
-        print('❌ Response body: ${response.body}');
-        throw Exception('OpenAI API error: ${response.statusCode} - ${response.body}');
+        throw Exception(
+          'OpenAI API error: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
-      print('❌ Error calling OpenAI: $e');
       rethrow;
     }
   }
