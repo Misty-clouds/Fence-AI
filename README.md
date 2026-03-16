@@ -164,6 +164,12 @@ fence/
 │   ├── tsconfig.json               # TypeScript config
 │   └── next.config.ts              # Next.js configuration
 │
+├── supabase/                        # Supabase database configuration
+│   ├── migrations/                 # SQL migration files
+│   │   ├── 001_initial_schema.sql  # Database tables and indexes
+│   │   └── 002_rls_policies.sql    # Row Level Security policies
+│   └── SUPABASE_SETUP.md           # Database setup guide
+│
 └── README.md                        # This file
 ```
 
@@ -187,6 +193,7 @@ You'll need accounts and API keys for:
 
 1. **Supabase** ([supabase.com](https://supabase.com))
    - Create a project
+   - Set up the database schema (see [Supabase Setup Guide](supabase/SUPABASE_SETUP.md))
    - Get your project URL and anon key
 
 2. **OpenAI** ([platform.openai.com](https://platform.openai.com))
@@ -222,7 +229,19 @@ cd fence/mobile
 flutter pub get
 ```
 
-### 3. Configure Environment Variables
+### 3. Set Up Supabase Database
+
+**Important**: You must set up the Supabase database before running the app.
+
+Follow the detailed guide: **[Supabase Setup Guide](supabase/SUPABASE_SETUP.md)**
+
+Quick steps:
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Run the SQL migrations from `supabase/migrations/` in the SQL Editor
+3. Verify tables and RLS policies are created
+4. Get your project URL and anon key
+
+### 4. Configure Environment Variables
 
 Create a `.env` file in the `mobile/` directory:
 
@@ -239,7 +258,7 @@ OPENAI_API_KEY=sk-your_openai_api_key_here
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```
 
-### 4. Configure Google Maps
+### 5. Configure Google Maps
 
 #### For Android
 
@@ -267,7 +286,7 @@ Or set it as a build setting in Xcode:
 - Name: `GOOGLE_MAPS_API_KEY`
 - Value: `your_google_maps_api_key_here`
 
-### 5. Run the App
+### 6. Run the App
 
 ```bash
 # For Android
@@ -281,7 +300,7 @@ flutter devices
 flutter run -d <device-id>
 ```
 
-### 6. Build for Production
+### 7. Build for Production
 
 ```bash
 # Android APK
