@@ -4,9 +4,11 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'map_service.dart';
 
 class FenceAIService {
-  final String? _openAIApiKey = dotenv.env['OPENAI_API_KEY'];
+  final String _serverUrl;
   final MapService _mapService = MapService();
-  final String _apiUrl = 'https://api.openai.com/v1/chat/completions';
+
+  FenceAIService()
+    : _serverUrl = dotenv.env['SERVER_URL'] ?? 'http://localhost:3000';
 
   // Analyze land for development potential
   Future<Map<String, dynamic>> analyzeLandDevelopmentPotential({
@@ -62,7 +64,8 @@ class FenceAIService {
         longitude: longitude,
       );
 
-      final prompt = '''
+      final prompt =
+          '''
 Provide a quick assessment of this land location for development potential:
 
 Location: ${locationData['formatted_address']}
@@ -105,11 +108,14 @@ Provide a brief assessment (2-3 paragraphs) covering:
       final nearbyPlacesText = nearbyPlaces.isEmpty
           ? 'general businesses and establishment found in the area'
           : nearbyPlaces
-              .map((place) =>
-                  '- Name: ${place['name']}, Types: ${place['types']}, Vicinity: ${place['vicinity']}')
-              .join('\n');
+                .map(
+                  (place) =>
+                      '- Name: ${place['name']}, Types: ${place['types']}, Vicinity: ${place['vicinity']}',
+                )
+                .join('\n');
 
-      final prompt = '''
+      final prompt =
+          '''
 Given the following detailed data about a selected location on a map,
 analyze it and suggest what kind of infrastructure or development project can be built there.
 
@@ -152,7 +158,8 @@ you should reply with "I can't help you with that. The Model is only built for L
   Future<Map<String, dynamic>> getSpecificDevelopmentRecommendations({
     required double latitude,
     required double longitude,
-    required String developmentType, // e.g., 'residential', 'commercial', 'agricultural', 'mixed-use'
+    required String
+    developmentType, // e.g., 'residential', 'commercial', 'agricultural', 'mixed-use'
     double? budget,
     String? timeline,
   }) async {
@@ -162,7 +169,8 @@ you should reply with "I can't help you with that. The Model is only built for L
         longitude: longitude,
       );
 
-      final prompt = '''
+      final prompt =
+          '''
 Analyze this land for ${developmentType.toUpperCase()} development:
 
 Location Details:
@@ -205,7 +213,8 @@ Please provide detailed recommendations for $developmentType development includi
 
   // Compare multiple locations
   Future<Map<String, dynamic>> compareLocations({
-    required List<Map<String, double>> locations, // List of {latitude, longitude}
+    required List<Map<String, double>>
+    locations, // List of {latitude, longitude}
     required String purposeOfComparison,
   }) async {
     try {
@@ -292,10 +301,13 @@ Format the response in a clear, structured manner with actionable insights.
     required List<Map<String, dynamic>> locationDataList,
     required String purpose,
   }) {
-    final locationsText = locationDataList.asMap().entries.map((entry) {
-      final index = entry.key + 1;
-      final data = entry.value;
-      return '''
+    final locationsText = locationDataList
+        .asMap()
+        .entries
+        .map((entry) {
+          final index = entry.key + 1;
+          final data = entry.value;
+          return '''
 Location $index:
 - Address: ${data['formatted_address']}
 - City: ${data['city']}, ${data['state']}
@@ -304,7 +316,8 @@ Location $index:
 - Nearby Schools: ${(data['nearby_schools'] as List).length}
 - Nearby Hospitals: ${(data['nearby_hospitals'] as List).length}
 ''';
-    }).join('\n');
+        })
+        .join('\n');
 
     return '''
 Compare the following locations for: $purpose
@@ -324,107 +337,56 @@ Be specific and data-driven in your analysis.
 ''';
   }
 
-  // Call OpenAI API
+  // Call server AI proxy endpoint (secure)
   Future<String> _callOpenAI(String prompt) async {
     try {
-      print('🤖 [FenceAIService] Calling OpenAI API...');
-      print('🤖 API Key Present: ${_openAIApiKey != null && _openAIApiKey.isNotEmpty}');
+      print('🤖 [FenceAIService] Calling server AI proxy...');
       print('🤖 Prompt Length: ${prompt.length} characters');
-      
+
       final requestBody = {
-        'model': 'gpt-4-turbo-preview',
         'messages': [
           {
             'role': 'system',
-            'content': 'You are an expert land development consultant and real estate analyst with extensive knowledge in urban planning, agriculture, commercial development, and environmental assessment. Provide detailed, actionable insights based on location data and land characteristics.',
+            'content':
+                'You are an expert land development consultant and real estate analyst with extensive knowledge in urban planning, agriculture, commercial development, and environmental assessment. Provide detailed, actionable insights based on location data and land characteristics.',
           },
-          {
-            'role': 'user',
-            'content': prompt,
-          },
+          {'role': 'user', 'content': prompt},
         ],
+        'model': 'gpt-4-turbo-preview',
         'temperature': 0.7,
-        'max_tokens': 3000,
       };
-      
-      print('🤖 Request Body: ${json.encode(requestBody).substring(0, 200)}...');
-      
+
       final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_openAIApiKey',
-        },
+        Uri.parse('$_serverUrl/api/ai/chat'),
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
 
-      print('🤖 OpenAI Response Status: ${response.statusCode}');
-      
+      print('🤖 Server Response Status: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final content = data['choices'][0]['message']['content'] as String;
-        print('✅ [FenceAIService] OpenAI response received successfully');
-        print('✅ Response Length: ${content.length} characters');
-        return content;
+        if (data['success'] == true) {
+          final content = data['data']['content'] as String;
+          print('✅ [FenceAIService] AI response received successfully');
+          print('✅ Response Length: ${content.length} characters');
+          return content;
+        } else {
+          throw Exception('Server error: ${data['error']}');
+        }
       } else {
-        print('❌ [FenceAIService] OpenAI API error: ${response.statusCode}');
+        print('❌ [FenceAIService] Server API error: ${response.statusCode}');
         print('❌ Error Body: ${response.body}');
-        throw Exception('OpenAI API error: ${response.statusCode} - ${response.body}');
+        throw Exception(
+          'Server API error: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       print('❌ [FenceAIService] Exception in _callOpenAI: $e');
-      throw Exception('Error calling OpenAI API: $e');
+      throw Exception('Error calling server AI API: $e');
     }
   }
 
-  // Stream responses for real-time updates (optional)
-  Stream<String> analyzeLandStreaming({
-    required double latitude,
-    required double longitude,
-    double? landSize,
-    String? soilType,
-  }) async* {
-    try {
-      final locationData = await _mapService.getComprehensiveLocationData(
-        latitude: latitude,
-        longitude: longitude,
-      );
-
-      final prompt = _buildAnalysisPrompt(
-        locationData: locationData,
-        landSize: landSize,
-        soilType: soilType,
-      );
-
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_openAIApiKey',
-        },
-        body: json.encode({
-          'model': 'gpt-4-turbo-preview',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'You are an expert land development consultant.',
-            },
-            {
-              'role': 'user',
-              'content': prompt,
-            },
-          ],
-          'stream': true,
-          'temperature': 0.7,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        yield response.body;
-      }
-    } catch (e) {
-      yield 'Error: $e';
-    }
-  }
+  // Note: Streaming is not implemented in the server proxy yet
+  // Use the regular analyzeLandDevelopmentPotential method instead
 }
- 

@@ -3,11 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ChatAIService {
-  static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
+  // Use server proxy endpoint for secure API key handling
+  final String _serverUrl;
 
-  final String _apiKey;
-
-  ChatAIService() : _apiKey = dotenv.env['OPENAI_API_KEY'] ?? '';
+  ChatAIService()
+    : _serverUrl = dotenv.env['SERVER_URL'] ?? 'http://localhost:3000';
 
   /// Generate AI response for continued chat about land, agriculture, and real estate
   /// Returns both the response text and detected locations (if any)
@@ -99,38 +99,34 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
     return text.replaceAll(RegExp(r'\[LOCATION:\s*[^\]]+\]'), '').trim();
   }
 
-  /// Call OpenAI API
+  /// Call server AI proxy endpoint (secure)
   Future<String> _callOpenAI(List<Map<String, dynamic>> messages) async {
     try {
-      print('🤖 Calling OpenAI Chat API...');
+      print('🤖 Calling server AI proxy...');
 
       final requestBody = {
-        'model': 'gpt-4-turbo-preview',
         'messages': messages,
-        'max_tokens': 2000,
+        'model': 'gpt-4-turbo-preview',
         'temperature': 0.7,
-        'top_p': 1.0,
-        'frequency_penalty': 0.0,
-        'presence_penalty': 0.0,
       };
 
       final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
-        },
+        Uri.parse('$_serverUrl/api/ai/chat'),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final content = data['choices'][0]['message']['content'] as String;
-
-        return content;
+        if (data['success'] == true) {
+          final content = data['data']['content'] as String;
+          return content;
+        } else {
+          throw Exception('Server error: ${data['error']}');
+        }
       } else {
         throw Exception(
-          'OpenAI API error: ${response.statusCode} - ${response.body}',
+          'Server API error: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {

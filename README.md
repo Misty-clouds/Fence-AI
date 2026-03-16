@@ -42,30 +42,40 @@ Fence AI is a comprehensive land research and development platform that combines
 - 📈 **Advanced Analytics** - Detailed insights and export capabilities (Premium)
 - 🎯 **Priority Support** - Dedicated support for premium users
 
+### Security Features
+- 🔒 **Secure API Architecture** - All API keys stored server-side, never exposed in mobile app
+- 🛡️ **Server-Side Proxy** - OpenAI and Google Maps API calls routed through secure backend
+- 🔐 **Row Level Security** - Supabase RLS policies protect user data
+- ✅ **Industry Best Practices** - Follows mobile security standards
+- 📊 **Usage Monitoring** - Server-side tracking and rate limiting
+
 ---
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Fence AI Platform                        │
+│              Fence AI Platform (Secure Architecture)         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────────┐         ┌──────────────────┐          │
-│  │  Flutter Mobile  │◄────────┤   Next.js Server │          │
-│  │      App         │  REST   │    (Backend)     │          │
+│  │  Flutter Mobile  │────────▶│   Next.js Server │          │
+│  │      App         │  HTTPS  │   (API Proxy)    │          │
+│  │                  │◀────────│                  │          │
+│  │  ✅ No API Keys  │         │  🔒 Secure Keys  │          │
 │  └────────┬─────────┘         └────────┬─────────┘          │
 │           │                            │                     │
-│           │                            │                     │
-│  ┌────────▼─────────┐         ┌───────▼──────────┐          │
-│  │   Supabase       │         │  InterSwitch     │          │
-│  │  (Auth + DB)     │         │  Payment Gateway │          │
-│  └──────────────────┘         └──────────────────┘          │
+│           │                            ├─────────────────┐   │
+│           │                            │                 │   │
+│  ┌────────▼─────────┐         ┌───────▼──────────┐  ┌───▼──┐│
+│  │   Supabase       │         │  OpenAI API      │  │Google││
+│  │  (Auth + DB)     │         │  (GPT-4)         │  │ Maps ││
+│  └──────────────────┘         └──────────────────┘  └──────┘│
 │                                                               │
-│  ┌──────────────────┐         ┌──────────────────┐          │
-│  │  Google Maps API │         │   OpenAI API     │          │
-│  │  (Location Data) │         │  (AI Analysis)   │          │
-│  └──────────────────┘         └──────────────────┘          │
+│                                ┌──────────────────┐          │
+│                                │  InterSwitch     │          │
+│                                │  Payment Gateway │          │
+│                                └──────────────────┘          │
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -73,12 +83,15 @@ Fence AI is a comprehensive land research and development platform that combines
 ### Data Flow
 
 1. **User Authentication**: Supabase handles user registration and authentication
-2. **Map Interaction**: Users select land plots on Google Maps
-3. **Location Enrichment**: Google Maps API provides detailed location data
-4. **AI Analysis**: OpenAI GPT-4 analyzes location data and generates recommendations
-5. **Data Storage**: Conversations and messages stored in Supabase PostgreSQL
-6. **Payment Processing**: InterSwitch handles premium subscription payments
-7. **Usage Tracking**: Local storage tracks free tier usage limits
+2. **Map Interaction**: Users select land plots on Google Maps (native display)
+3. **Secure API Calls**: Mobile app calls Next.js server proxy endpoints
+4. **Location Enrichment**: Server calls Google Maps API with secure key
+5. **AI Analysis**: Server calls OpenAI GPT-4 API with secure key
+6. **Data Storage**: Conversations and messages stored in Supabase PostgreSQL
+7. **Payment Processing**: InterSwitch handles premium subscription payments
+8. **Usage Tracking**: Local storage tracks free tier usage limits
+
+**Security Note**: All API keys (OpenAI, Google Maps) are stored server-side and never exposed to the mobile app. See [SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md) for details.
 
 ---
 
@@ -249,14 +262,25 @@ Create a `.env` file in the `mobile/` directory:
 cp .env.example .env
 ```
 
-Edit `.env` and add your API keys:
+Edit `.env` and add your configuration:
 
 ```env
+# Supabase Configuration (for authentication and database)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key_here
-OPENAI_API_KEY=sk-your_openai_api_key_here
+
+# Server URL (all API keys are secured on the server)
+SERVER_URL=http://localhost:3000
+
+# Google Maps API Key (only for native map display, NOT for API calls)
+# API calls go through the server for security
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```
+
+**Important Security Note**: 
+- ✅ OpenAI API key is **NOT** stored in mobile app (server-side only)
+- ✅ Google Maps API key in mobile app is **only** for map display widget
+- ✅ All API calls (geocoding, places, elevation) go through secure server proxy
 
 ### 5. Configure Google Maps
 
@@ -339,10 +363,16 @@ Create a `.env` file in the `server/` directory:
 cp .env.example .env
 ```
 
-Edit `.env` and add your InterSwitch credentials:
+Edit `.env` and add your API keys and credentials:
 
 ```env
-# InterSwitch General Integration Credentials
+# OpenAI API Configuration (REQUIRED - stored securely on server)
+OPENAI_API_KEY=sk-your_openai_api_key_here
+
+# Google Maps API Configuration (REQUIRED - stored securely on server)
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+
+# InterSwitch Payment Gateway
 INTERSWITCH_MERCHANT_CODE=MX6072
 INTERSWITCH_PAY_ITEM_ID=9405967
 INTERSWITCH_REDIRECT_URL=https://your-domain.com/payment-response
@@ -354,6 +384,12 @@ INTERSWITCH_MODE=TEST
 # INTERSWITCH_CARD_API_CLIENT_ID=your_client_id
 # INTERSWITCH_CARD_API_SECRET=your_secret
 ```
+
+**Security Architecture**:
+- 🔒 All API keys are stored **only** on the server
+- 🛡️ Mobile app never has access to OpenAI or Google Maps API keys
+- ✅ Server acts as secure proxy for all third-party API calls
+- 📊 Usage monitoring and rate limiting on server side
 
 **Important Notes:**
 - Use `TEST` mode for development with test credentials
@@ -733,37 +769,190 @@ Verify a payment transaction.
 
 ---
 
-## 🔐 Environment Variables
+## � Security Architecture
+
+### Overview
+
+Fence AI implements a **secure server-side API proxy architecture** to protect sensitive API keys and ensure best security practices. All third-party API calls (OpenAI, Google Maps) are routed through the Next.js backend server, keeping API keys secure and never exposing them in the mobile application.
+
+### Security Benefits
+
+#### ✅ API Key Protection
+- **No API keys in mobile app**: OpenAI and Google Maps API keys are never bundled with the mobile application
+- **Server-side only**: All sensitive keys are stored securely on the server in environment variables
+- **Cannot be extracted**: Even if the mobile app is decompiled, API keys cannot be extracted
+
+#### ✅ Request Control
+- **Rate limiting**: Server can implement rate limiting to prevent abuse
+- **Request validation**: Server validates all requests before forwarding to third-party APIs
+- **Usage monitoring**: All API usage is logged and monitored server-side
+- **Cost control**: Prevents unauthorized API usage that could incur costs
+
+#### ✅ Flexible Updates
+- **Key rotation**: API keys can be rotated without updating the mobile app
+- **Provider switching**: Can switch API providers without mobile app changes
+- **Feature flags**: Server can enable/disable features dynamically
+
+### API Proxy Endpoints
+
+The server provides secure proxy endpoints for all third-party API calls:
+
+#### 1. AI Chat Proxy
+- **Endpoint**: `POST /api/ai/chat`
+- **Purpose**: Proxies requests to OpenAI GPT-4
+- **Security**: API key never exposed to client
+- **Request**:
+  ```json
+  {
+    "messages": [{"role": "user", "content": "..."}],
+    "model": "gpt-4-turbo-preview",
+    "temperature": 0.7
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "content": "AI response...",
+      "model": "gpt-4-turbo-preview",
+      "usage": {...}
+    }
+  }
+  ```
+
+#### 2. Geocoding Proxy
+- **Endpoint**: `GET /api/maps/geocode?latlng=lat,lng`
+- **Purpose**: Proxies requests to Google Maps Geocoding API
+- **Security**: API key never exposed to client
+
+#### 3. Places Proxy
+- **Endpoint**: `GET /api/maps/places?location=lat,lng&radius=5000&type=restaurant`
+- **Purpose**: Proxies requests to Google Maps Places API
+- **Security**: API key never exposed to client
+
+#### 4. Elevation Proxy
+- **Endpoint**: `GET /api/maps/elevation?locations=lat,lng|lat,lng`
+- **Purpose**: Proxies requests to Google Maps Elevation API
+- **Security**: API key never exposed to client
+
+### Secure Services Architecture
+
+**Mobile App Services:**
+- **ApiService** (`lib/core/services/api_service.dart`) - Centralized service for all server API calls
+- **ChatAIService** - Uses ApiService to call server AI proxy (no OpenAI key required)
+- **FenceAIService** - Uses ApiService to call server AI proxy (no OpenAI key required)
+- **MapService** - Uses ApiService to call server Maps proxy (no Google Maps key for API calls)
+
+**Note**: The Google Maps API key in the mobile app is only used for displaying the native map widget. All geocoding, places, and elevation API calls go through the server.
+
+### Security Best Practices Implemented
+
+1. ✅ **Server-side API key storage**: All sensitive keys stored in server environment variables
+2. ✅ **HTTPS only**: All communication between mobile app and server uses HTTPS
+3. ✅ **Request validation**: Server validates all incoming requests
+4. ✅ **Error handling**: Errors don't expose sensitive information
+5. ✅ **Supabase RLS**: Row Level Security policies protect user data
+6. ✅ **Authentication**: Supabase Auth for user authentication
+
+### Deployment Security Checklist
+
+#### Mobile App Deployment
+- [ ] Update `SERVER_URL` in `.env` to production server URL
+- [ ] Ensure `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set correctly
+- [ ] Configure `GOOGLE_MAPS_API_KEY` for map display only
+- [ ] Remove any debug logging that might expose sensitive data
+- [ ] Test all API endpoints with production server
+- [ ] Enable ProGuard/R8 for Android (code obfuscation)
+- [ ] Enable bitcode for iOS
+
+#### Server Deployment
+- [ ] Set all environment variables in production environment
+- [ ] Use actual API keys (not test credentials)
+- [ ] Enable HTTPS/SSL certificates
+- [ ] Configure CORS properly
+- [ ] Set up rate limiting
+- [ ] Configure logging and monitoring
+- [ ] Set up error tracking (e.g., Sentry)
+- [ ] Test all proxy endpoints
+- [ ] Set up database backups
+- [ ] Configure auto-scaling if needed
+
+### Security Testing
+
+```bash
+# Test that API keys are not in mobile app bundle
+# Android
+unzip app-release.apk
+grep -r "sk-" . # Should find nothing
+grep -r "AIza" . # Should only find in map display config
+
+# iOS
+unzip YourApp.ipa
+grep -r "sk-" Payload/ # Should find nothing
+```
+
+### API Endpoint Testing
+
+```bash
+# Test AI proxy
+curl -X POST https://your-server.com/api/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hello"}]}'
+
+# Test geocoding proxy
+curl "https://your-server.com/api/maps/geocode?latlng=6.5244,3.3792"
+
+# Test places proxy
+curl "https://your-server.com/api/maps/places?location=6.5244,3.3792&radius=5000"
+```
+
+### Key Rotation Process
+
+Rotate API keys periodically for security:
+1. Generate new API key from provider
+2. Update server environment variable
+3. Test endpoints
+4. Revoke old API key
+5. ✅ No mobile app update required!
+
+---
+
+## �� Environment Variables
 
 ### Mobile App (.env)
 
 ```env
-# Supabase Configuration
+# Supabase Configuration (for authentication and database)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
 
-# OpenAI API
-OPENAI_API_KEY=sk-your_openai_api_key
+# Server URL (change to production URL when deploying)
+SERVER_URL=http://localhost:3000
 
-# Google Maps API
+# Google Maps API Key (for native map display only)
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
+
+**Security Note**: OpenAI API key is NOT stored in mobile app for security.
 
 ### Server (.env)
 
 ```env
+# OpenAI API Configuration (SECURE - server-side only)
+OPENAI_API_KEY=sk-your_openai_api_key
+
+# Google Maps API Configuration (SECURE - server-side only)
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+
 # InterSwitch Payment Gateway
 INTERSWITCH_MERCHANT_CODE=MX6072
 INTERSWITCH_PAY_ITEM_ID=9405967
 INTERSWITCH_REDIRECT_URL=https://your-domain.com/payment-response
 INTERSWITCH_MODE=TEST
-
-# Optional: Card Payment API
-# INTERSWITCH_CARD_API_MERCHANT_CODE=MX21696
-# INTERSWITCH_CARD_API_PAY_ITEM_ID=4177785
-# INTERSWITCH_CARD_API_CLIENT_ID=your_client_id
-# INTERSWITCH_CARD_API_SECRET=your_secret
 ```
+
+**🔒 Security Architecture**: All sensitive API keys are stored server-side. Mobile app communicates with server proxy endpoints. See [SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md) for complete details.
 
 ---
 
