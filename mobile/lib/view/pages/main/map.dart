@@ -8,17 +8,19 @@ import 'package:fence_ai/constants/styles/text_styles.dart';
 import 'package:fence_ai/view/widgets/location_details_sheet.dart';
 import 'package:fence_ai/view/widgets/side_bar.dart';
 import 'package:fence_ai/view/widgets/ai_analysis_loading_dialog.dart';
+import 'package:fence_ai/view/widgets/upgrade_prompt_sheet.dart';
 import 'package:fence_ai/view/pages/main/research_chat.dart';
 import 'package:fence_ai/core/providers/providers.dart';
 import 'package:fence_ai/core/services/map_service.dart';
 import 'package:fence_ai/core/services/fence_ai_service.dart';
+import 'package:fence_ai/core/services/usage_tracking_service.dart';
 import 'package:fence_ai/core/models/research_messages_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math' as math;
 
 class MapPage extends ConsumerStatefulWidget {
   final String? conversationId;
-  
+
   const MapPage({super.key, this.conversationId});
 
   @override
@@ -28,6 +30,7 @@ class MapPage extends ConsumerStatefulWidget {
 class _MapPageState extends ConsumerState<MapPage> {
   final TextEditingController _searchController = TextEditingController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final UsageTrackingService _usageTracking = UsageTrackingService();
 
   @override
   void initState() {
@@ -82,17 +85,18 @@ class _MapPageState extends ConsumerState<MapPage> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Title
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     Text(
                       'Search Location',
-                      style: AppTextStyles.titleMedium().copyWith(
-                        fontSize: 20,
-                      ),
+                      style: AppTextStyles.titleMedium().copyWith(fontSize: 20),
                     ),
                     const Spacer(),
                     IconButton(
@@ -102,10 +106,13 @@ class _MapPageState extends ConsumerState<MapPage> {
                   ],
                 ),
               ),
-              
+
               // Search field
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.bg,
@@ -159,15 +166,15 @@ class _MapPageState extends ConsumerState<MapPage> {
                   ),
                 ),
               ),
-              
+
               const Divider(),
-              
+
               // Search results
               Expanded(
                 child: Consumer(
                   builder: (context, ref, child) {
                     final mapState = ref.watch(mapProvider);
-                    
+
                     if (mapState.isLoading) {
                       return const Center(
                         child: CircularProgressIndicator(
@@ -175,7 +182,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                         ),
                       );
                     }
-                    
+
                     if (mapState.searchResults.isEmpty) {
                       return Center(
                         child: Column(
@@ -197,12 +204,13 @@ class _MapPageState extends ConsumerState<MapPage> {
                         ),
                       );
                     }
-                    
+
                     return ListView.separated(
                       controller: scrollController,
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: mapState.searchResults.length,
-                      separatorBuilder: (context, index) => const Divider(height: 1),
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final result = mapState.searchResults[index];
                         return ListTile(
@@ -230,7 +238,9 @@ class _MapPageState extends ConsumerState<MapPage> {
                           ),
                           onTap: () async {
                             Navigator.pop(context);
-                            await ref.read(mapProvider).selectSearchResult(result);
+                            await ref
+                                .read(mapProvider)
+                                .selectSearchResult(result);
                             _searchController.clear();
                           },
                         );
@@ -269,7 +279,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   // Calculate area of polygon in square meters using Shoelace formula
   double _calculatePolygonArea(List<LatLng> points) {
     if (points.length < 3) return 0;
-    
+
     double area = 0;
     for (int i = 0; i < points.length; i++) {
       int j = (i + 1) % points.length;
@@ -277,14 +287,15 @@ class _MapPageState extends ConsumerState<MapPage> {
       area -= points[j].longitude * points[i].latitude;
     }
     area = (area / 2.0).abs();
-    
+
     // Convert to square meters (approximate)
     // 1 degree of latitude ≈ 111,320 meters
     // 1 degree of longitude varies by latitude
-    double avgLat = points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
+    double avgLat =
+        points.map((p) => p.latitude).reduce((a, b) => a + b) / points.length;
     double metersPerDegreeLat = 111320;
     double metersPerDegreeLng = 111320 * math.cos(avgLat * math.pi / 180);
-    
+
     return area * metersPerDegreeLat * metersPerDegreeLng;
   }
 
@@ -294,22 +305,25 @@ class _MapPageState extends ConsumerState<MapPage> {
     List<LatLng> polygonPoints,
   ) async {
     try {
-      print('💾 Saving location data to conversation: ${widget.conversationId}');
-      
+      print(
+        '💾 Saving location data to conversation: ${widget.conversationId}',
+      );
+
       // Calculate area
       double areaInSquareMeters = _calculatePolygonArea(polygonPoints);
       double areaInAcres = areaInSquareMeters / 4046.86; // Convert to acres
-      
+
       // Prepare location data
       final locationData = {
-        'center': {
-          'latitude': centerLat,
-          'longitude': centerLng,
-        },
-        'polygon_points': polygonPoints.map((point) => {
-          'latitude': point.latitude,
-          'longitude': point.longitude,
-        }).toList(),
+        'center': {'latitude': centerLat, 'longitude': centerLng},
+        'polygon_points': polygonPoints
+            .map(
+              (point) => {
+                'latitude': point.latitude,
+                'longitude': point.longitude,
+              },
+            )
+            .toList(),
         'area': {
           'square_meters': areaInSquareMeters,
           'acres': areaInAcres,
@@ -317,18 +331,20 @@ class _MapPageState extends ConsumerState<MapPage> {
         },
         'timestamp': DateTime.now().toIso8601String(),
       };
-      
+
       print('📊 Location data prepared: ${locationData['area']}');
-      
+
       // Update conversation with location data
-      final conversationsProvider = ref.read(researchConversationsProvider.notifier);
+      final conversationsProvider = ref.read(
+        researchConversationsProvider.notifier,
+      );
       await conversationsProvider.updateLocationData(
         widget.conversationId!,
         locationData,
       );
-      
+
       print('✅ Location data saved successfully');
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -340,8 +356,11 @@ class _MapPageState extends ConsumerState<MapPage> {
       }
 
       // Generate AI analysis
-      await _generateAndSaveAIAnalysis(centerLat, centerLng, areaInSquareMeters);
-      
+      await _generateAndSaveAIAnalysis(
+        centerLat,
+        centerLng,
+        areaInSquareMeters,
+      );
     } catch (e) {
       print('❌ Error saving location data: $e');
       if (mounted) {
@@ -361,36 +380,57 @@ class _MapPageState extends ConsumerState<MapPage> {
     double area,
   ) async {
     try {
+      // Check usage limits before proceeding
+      final canSend = await _usageTracking.canSendResearchPrompt();
+
+      if (!canSend) {
+        // Show non-dismissible upgrade prompt
+        if (mounted) {
+          final stats = await _usageTracking.getUsageStats();
+          await UpgradePromptSheet.show(
+            context,
+            isDismissible: false,
+            researchRemaining: stats['researchRemaining'] as int?,
+            chatRemaining: stats['chatRemaining'] as int?,
+          );
+        }
+        return;
+      }
+
       print('🤖 ============ STARTING AI ANALYSIS ============');
       print('🤖 Location: Lat=$latitude, Lng=$longitude');
       print('🤖 Area: $area square meters');
       print('🤖 Conversation ID: ${widget.conversationId}');
-      
+
       // Get current user ID
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
         throw Exception('User not authenticated');
       }
-      
+
+      // Increment usage counter
+      await _usageTracking.incrementResearchPromptCount();
+
       // Send user message first
       print('📤 Sending user message...');
       final messagesService = ref.read(researchMessagesProvider.notifier);
       await messagesService.sendTextMessage(
         conversationId: widget.conversationId!,
         researcherId: currentUser.id,
-        content: 'Research the best use case and development for the plot of land selected on the map',
+        content:
+            'Research the best use case and development for the plot of land selected on the map',
       );
       print('✅ User message sent successfully');
-    
-    // Show loading dialog
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AIAnalysisLoadingDialog(),
-      );
-    }
-      
+
+      // Show loading dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AIAnalysisLoadingDialog(),
+        );
+      }
+
       // Get enriched location data
       final mapService = MapService();
       print('🗺️ Fetching enriched location data from Google Maps...');
@@ -399,33 +439,42 @@ class _MapPageState extends ConsumerState<MapPage> {
         longitude: longitude,
         area: area,
       );
-      
+
       print('📍 Enriched location data retrieved:');
       print('   - Address: ${enrichedData['formatted_address']}');
       print('   - City: ${enrichedData['city']}');
       print('   - Location Type: ${enrichedData['is_city_or_village']}');
       print('   - Roads: ${enrichedData['main_roads']}');
-      print('   - Nearby Places: ${(enrichedData['nearby_places'] as List).length} places found');
-      
+      print(
+        '   - Nearby Places: ${(enrichedData['nearby_places'] as List).length} places found',
+      );
+
       // Generate AI recommendations
       final fenceAIService = FenceAIService();
       print('🤖 Calling OpenAI API for land development recommendations...');
-      final aiResponse = await fenceAIService.generateLandDevelopmentRecommendations(
-        latitude: latitude,
-        longitude: longitude,
-        area: area,
-        enrichedLocationData: enrichedData,
-      );
-      
+      final aiResponse = await fenceAIService
+          .generateLandDevelopmentRecommendations(
+            latitude: latitude,
+            longitude: longitude,
+            area: area,
+            enrichedLocationData: enrichedData,
+          );
+
       print('🎯 ============ AI RECOMMENDATIONS GENERATED ============');
       print('📝 AI Response Length: ${aiResponse.length} characters');
       print('📝 AI Response Preview (first 500 chars):');
-      print(aiResponse.substring(0, aiResponse.length > 500 ? 500 : aiResponse.length));
+      print(
+        aiResponse.substring(
+          0,
+          aiResponse.length > 500 ? 500 : aiResponse.length,
+        ),
+      );
       print('📝 ============================================');
-      
+
       // Prepare location header
       final areaInAcres = area / 4046.86;
-      final locationHeader = '''
+      final locationHeader =
+          '''
 **Location Analysis**
 
 **📍 Location:** ${enrichedData['formatted_address'] ?? 'Lat: ${latitude.toStringAsFixed(6)}, Lng: ${longitude.toStringAsFixed(6)}'}
@@ -435,33 +484,33 @@ class _MapPageState extends ConsumerState<MapPage> {
 ---
 
 ''';
-      
+
       // Concatenate location details with AI response
       final fullResponse = locationHeader + aiResponse;
       print('📝 Full response with location header prepared');
-      
+
       // Save AI response as a received message using the service directly
       print('💾 Saving AI response to database...');
       print('💾 Conversation ID: ${widget.conversationId}');
       print('💾 Content Type: ${ContentType.text.toJson()}');
       print('💾 Message Type: received');
-      
+
       final savedMessage = await messagesService.receiveMessage(
         conversationId: widget.conversationId!,
         content: fullResponse,
         contentType: ContentType.text,
       );
-      
+
       if (savedMessage != null) {
         print('✅ AI analysis saved to messages successfully!');
         print('✅ Message ID: ${savedMessage.id}');
         print('✅ Created At: ${savedMessage.createdAt}');
-        
+
         // Dismiss loading dialog
         if (mounted) {
           Navigator.of(context).pop();
         }
-        
+
         // Show analysis in bottom sheet
         if (mounted) {
           await _showAnalysisBottomSheet(fullResponse, area);
@@ -470,18 +519,17 @@ class _MapPageState extends ConsumerState<MapPage> {
         print('❌ Failed to save message - savedMessage is null');
         throw Exception('Failed to save AI response to database');
       }
-      
     } catch (e, stackTrace) {
       print('❌ ============ ERROR IN AI ANALYSIS ============');
       print('❌ Error: $e');
       print('❌ Stack Trace: $stackTrace');
       print('❌ ============================================');
-      
+
       // Dismiss loading dialog
       if (mounted) {
         Navigator.of(context).pop();
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -523,10 +571,13 @@ class _MapPageState extends ConsumerState<MapPage> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -567,9 +618,9 @@ class _MapPageState extends ConsumerState<MapPage> {
                   ],
                 ),
               ),
-              
+
               const Divider(height: 1),
-              
+
               // Analysis content with markdown rendering
               Expanded(
                 child: Markdown(
@@ -607,7 +658,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                   ),
                 ),
               ),
-              
+
               // Action buttons
               Container(
                 padding: const EdgeInsets.all(24),
@@ -699,10 +750,7 @@ class _MapPageState extends ConsumerState<MapPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppColors.bg,
-      drawer: const Drawer(
-        width: 320,
-        child: SideBar(),
-      ),
+      drawer: const Drawer(width: 320, child: SideBar()),
       body: Stack(
         children: [
           // Google Map
@@ -790,7 +838,10 @@ class _MapPageState extends ConsumerState<MapPage> {
                             ],
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.menu, color: AppColors.text1),
+                            icon: const Icon(
+                              Icons.menu,
+                              color: AppColors.text1,
+                            ),
                             onPressed: () {
                               _scaffoldKey.currentState?.openDrawer();
                             },
@@ -819,8 +870,10 @@ class _MapPageState extends ConsumerState<MapPage> {
                             ],
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.chat_bubble_outline,
-                                color: AppColors.text1),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              color: AppColors.text1,
+                            ),
                             onPressed: () {
                               // Handle chat
                             },
@@ -861,7 +914,10 @@ class _MapPageState extends ConsumerState<MapPage> {
                         _showSearchBottomSheet(context);
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(50),
@@ -994,8 +1050,10 @@ class _MapPageState extends ConsumerState<MapPage> {
               child: Center(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: mapState.isDrawMode
                         ? AppColors.secondary2
@@ -1020,10 +1078,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                           },
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.edit,
-                                color: Colors.white,
-                              ),
+                              const Icon(Icons.edit, color: Colors.white),
                               const SizedBox(width: 12),
                               Text(
                                 'Draw to search',
@@ -1043,10 +1098,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                           },
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.close,
-                                color: AppColors.text1,
-                              ),
+                              const Icon(Icons.close, color: AppColors.text1),
                               const SizedBox(width: 8),
                             ],
                           ),
@@ -1072,12 +1124,12 @@ class _MapPageState extends ConsumerState<MapPage> {
                               }
                               avgLat /= mapState.polygonPoints.length;
                               avgLng /= mapState.polygonPoints.length;
-                              
+
                               // Search the area
-                              await ref.read(mapProvider).searchArea(
-                                LatLng(avgLat, avgLng),
-                              );
-                              
+                              await ref
+                                  .read(mapProvider)
+                                  .searchArea(LatLng(avgLat, avgLng));
+
                               // Save location data to conversation
                               if (widget.conversationId != null) {
                                 await _saveLocationDataToConversation(
@@ -1086,7 +1138,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                                   mapState.polygonPoints,
                                 );
                               }
-                              
+
                               ref.read(mapProvider).toggleDrawMode();
                             },
                             child: Container(
@@ -1113,9 +1165,7 @@ class _MapPageState extends ConsumerState<MapPage> {
             Container(
               color: Colors.black.withOpacity(0.3),
               child: const Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.primary1,
-                ),
+                child: CircularProgressIndicator(color: AppColors.primary1),
               ),
             ),
         ],

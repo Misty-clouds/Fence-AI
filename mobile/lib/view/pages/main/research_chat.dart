@@ -5,21 +5,19 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:fence_ai/constants/styles/color.dart';
 import 'package:fence_ai/constants/styles/text_styles.dart';
 import 'package:fence_ai/view/widgets/side_bar.dart';
+import 'package:fence_ai/view/widgets/upgrade_prompt_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fence_ai/core/providers/providers.dart';
 import 'package:fence_ai/core/models/research_messages_model.dart';
 import 'package:fence_ai/auth/providers/auth_provider.dart';
 import 'package:fence_ai/core/services/chat_ai_service.dart';
+import 'package:fence_ai/core/services/usage_tracking_service.dart';
 
 class ResearchChat extends ConsumerStatefulWidget {
   final String? conversationId;
   final String? conversationTitle;
-  
-  const ResearchChat({
-    super.key,
-    this.conversationId,
-    this.conversationTitle,
-  });
+
+  const ResearchChat({super.key, this.conversationId, this.conversationTitle});
 
   @override
   ConsumerState<ResearchChat> createState() => _ResearchChatState();
@@ -29,6 +27,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final UsageTrackingService _usageTracking = UsageTrackingService();
   bool _isAILoading = false;
 
   final List<String> _suggestedQuestions = [
@@ -50,9 +49,11 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final messagesNotifier = ref.read(researchMessagesProvider.notifier);
         messagesNotifier.fetchMessagesByConversation(widget.conversationId!);
-        
+
         // Fetch conversation to get location data
-        final conversationsNotifier = ref.read(researchConversationsProvider.notifier);
+        final conversationsNotifier = ref.read(
+          researchConversationsProvider.notifier,
+        );
         conversationsNotifier.fetchConversationById(widget.conversationId!);
       });
     }
@@ -72,7 +73,27 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
     final currentUser = ref.read(currentUserProvider);
     if (currentUser == null) return;
 
+    // Check usage limits before proceeding
+    final canSend = await _usageTracking.canSendChatMessage();
+
+    if (!canSend) {
+      // Show non-dismissible upgrade prompt
+      if (mounted) {
+        final stats = await _usageTracking.getUsageStats();
+        await UpgradePromptSheet.show(
+          context,
+          isDismissible: false,
+          researchRemaining: stats['researchRemaining'] as int?,
+          chatRemaining: stats['chatRemaining'] as int?,
+        );
+      }
+      return;
+    }
+
     _messageController.clear();
+
+    // Increment usage counter
+    await _usageTracking.incrementChatMessageCount();
 
     // Send message
     final messagesNotifier = ref.read(researchMessagesProvider.notifier);
@@ -105,43 +126,44 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
     setState(() {
       _isAILoading = true;
     });
-    
+
     try {
       print('💬 Generating AI response for: $userMessage');
-      
+
       // Get conversation history
       final messagesState = ref.read(researchMessagesProvider);
       final conversationHistory = ChatAIService.buildConversationHistory(
         messagesState.messages,
         maxMessages: 10,
       );
-      
+
       // Generate AI response
       final chatAI = ChatAIService();
       final result = await chatAI.generateChatResponse(
         userMessage: userMessage,
         conversationHistory: conversationHistory,
       );
-      
+
       String aiResponse = result['response'] as String;
       final locations = result['locations'] as List<Map<String, dynamic>>;
-      
+
       // Clean response text (remove location markers)
       aiResponse = chatAI.cleanResponseText(aiResponse);
-      
+
       // Store locations as metadata if present
       String finalResponse = aiResponse;
       if (locations.isNotEmpty) {
         // Add locations metadata at the end (will be parsed later)
-        finalResponse = '$aiResponse\n\n[LOCATIONS_DATA]${jsonEncode(locations)}[/LOCATIONS_DATA]';
+        finalResponse =
+            '$aiResponse\n\n[LOCATIONS_DATA]${jsonEncode(locations)}[/LOCATIONS_DATA]';
       }
-      
+
       print('✅ AI response generated with ${locations.length} locations');
-      
+
       setState(() {
         _isAILoading = false;
       });
-      
+
       // Save AI response
       final messagesNotifier = ref.read(researchMessagesProvider.notifier);
       await messagesNotifier.receiveMessage(
@@ -149,15 +171,15 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
         content: finalResponse,
         contentType: ContentType.text,
       );
-      
+
       _scrollToBottom();
     } catch (e) {
       print('❌ Error generating AI response: $e');
-      
+
       setState(() {
         _isAILoading = false;
       });
-      
+
       // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -193,21 +215,28 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
         actions: [
           Consumer(
             builder: (context, ref, _) {
-              final conversationsState = ref.watch(researchConversationsProvider);
-              
-              if (conversationsState.conversations.isEmpty || widget.conversationId == null) {
+              final conversationsState = ref.watch(
+                researchConversationsProvider,
+              );
+
+              if (conversationsState.conversations.isEmpty ||
+                  widget.conversationId == null) {
                 return IconButton(
-                  icon: const Icon(Icons.map_outlined, color: AppColors.text1, size: 28),
+                  icon: const Icon(
+                    Icons.map_outlined,
+                    color: AppColors.text1,
+                    size: 28,
+                  ),
                   onPressed: null,
                 );
               }
-              
+
               final conversation = conversationsState.conversations.firstWhere(
                 (c) => c.id == widget.conversationId,
                 orElse: () => conversationsState.conversations.first,
               );
               final hasLocationData = conversation.locationData != null;
-              
+
               return IconButton(
                 icon: Icon(
                   hasLocationData ? Icons.map : Icons.map_outlined,
@@ -215,7 +244,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   size: 28,
                 ),
                 onPressed: hasLocationData
-                    ? () => _showLocationMapBottomSheet(conversation.locationData!)
+                    ? () => _showLocationMapBottomSheet(
+                        conversation.locationData!,
+                      )
                     : null,
               );
             },
@@ -238,18 +269,26 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
 
                 return ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
+                  ),
                   itemCount: messages.length + (_isAILoading ? 1 : 0),
                   itemBuilder: (context, index) {
                     // Show loading indicator at the end
                     if (index == messages.length && _isAILoading) {
                       return _buildLoadingIndicator();
                     }
-                    
+
                     // First AI message is the second message (index 1) after user's research request
-                    final isFirstAIMessage = index == 1 && 
-                        messages[index].messageType == MessageContentType.received;
-                    return _buildMessageBubble(messages[index], isFirstAIMessage);
+                    final isFirstAIMessage =
+                        index == 1 &&
+                        messages[index].messageType ==
+                            MessageContentType.received;
+                    return _buildMessageBubble(
+                      messages[index],
+                      isFirstAIMessage,
+                    );
                   },
                 );
               },
@@ -261,12 +300,12 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
             builder: (context, ref, _) {
               final messagesState = ref.watch(researchMessagesProvider);
               final messages = messagesState.messages;
-              
+
               if (messages.isNotEmpty) return const SizedBox.shrink();
-              
+
               final screenWidth = MediaQuery.of(context).size.width;
               final maxContainerWidth = screenWidth * 0.65;
-              
+
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 height: 80,
@@ -283,7 +322,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                           constraints: BoxConstraints(
                             maxWidth: maxContainerWidth,
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(25),
@@ -292,7 +334,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                           child: Center(
                             child: Text(
                               _suggestedQuestions[index],
-                              style: AppTextStyles.regularText(color: AppColors.text1),
+                              style: AppTextStyles.regularText(
+                                color: AppColors.text1,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -310,9 +354,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              border: Border(
-                top: BorderSide(color: Colors.grey.shade200),
-              ),
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
             ),
             child: SafeArea(
               child: Row(
@@ -324,7 +366,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                       // Handle attachment
                     },
                   ),
-                  
+
                   // Text field
                   Expanded(
                     child: TextField(
@@ -346,7 +388,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(25),
-                          borderSide: BorderSide(color: AppColors.primary1, width: 1.5),
+                          borderSide: BorderSide(
+                            color: AppColors.primary1,
+                            width: 1.5,
+                          ),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
@@ -356,9 +401,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                       onSubmitted: _sendMessage,
                     ),
                   ),
-                  
+
                   const SizedBox(width: 8),
-                  
+
                   // Send button
                   Container(
                     decoration: BoxDecoration(
@@ -407,15 +452,21 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
     );
   }
 
-  Widget _buildMessageBubble(ResearchMessageModel message, bool isFirstAIMessage) {
+  Widget _buildMessageBubble(
+    ResearchMessageModel message,
+    bool isFirstAIMessage,
+  ) {
     final isUser = message.messageType == MessageContentType.sent;
-    
+
     // Extract locations data from message content
     String displayContent = message.content ?? '';
     List<Map<String, dynamic>>? messageLocations;
-    
+
     if (!isUser && displayContent.contains('[LOCATIONS_DATA]')) {
-      final regex = RegExp(r'\[LOCATIONS_DATA\](.*?)\[/LOCATIONS_DATA\]', dotAll: true);
+      final regex = RegExp(
+        r'\[LOCATIONS_DATA\](.*?)\[/LOCATIONS_DATA\]',
+        dotAll: true,
+      );
       final match = regex.firstMatch(displayContent);
       if (match != null) {
         try {
@@ -429,11 +480,13 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
         }
       }
     }
-    
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Container(
             constraints: BoxConstraints(
@@ -487,41 +540,48 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                           blockSpacing: 8,
                         ),
                       ),
-                
+
                 // Show map preview for first AI message with researched location
                 if (isFirstAIMessage && !isUser) ...[
                   const SizedBox(height: 16),
                   Consumer(
                     builder: (context, ref, _) {
-                      final conversationsState = ref.watch(researchConversationsProvider);
-                      
-                      if (conversationsState.conversations.isEmpty || widget.conversationId == null) {
+                      final conversationsState = ref.watch(
+                        researchConversationsProvider,
+                      );
+
+                      if (conversationsState.conversations.isEmpty ||
+                          widget.conversationId == null) {
                         return const SizedBox.shrink();
                       }
-                      
-                      final conversation = conversationsState.conversations.firstWhere(
-                        (c) => c.id == widget.conversationId,
-                        orElse: () => conversationsState.conversations.first,
-                      );
-                      
+
+                      final conversation = conversationsState.conversations
+                          .firstWhere(
+                            (c) => c.id == widget.conversationId,
+                            orElse: () =>
+                                conversationsState.conversations.first,
+                          );
+
                       if (conversation.locationData == null) {
                         return const SizedBox.shrink();
                       }
-                      
+
                       return _buildMapPreview(conversation.locationData!);
                     },
                   ),
                 ],
-                
+
                 // Show locations map preview for messages with location data
-                if (!isUser && messageLocations != null && messageLocations.isNotEmpty) ...[
+                if (!isUser &&
+                    messageLocations != null &&
+                    messageLocations.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _buildLocationsMapPreview(messageLocations),
                 ],
               ],
             ),
           ),
-          
+
           // Message actions (copy, like, dislike, refresh) for AI messages only
           if (!isUser)
             Padding(
@@ -550,11 +610,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: Colors.grey.shade600,
-        ),
+        child: Icon(icon, size: 20, color: Colors.grey.shade600),
       ),
     );
   }
@@ -599,16 +655,16 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
       builder: (context, value, child) {
         final delay = index * 0.15;
         final adjustedValue = (value - delay).clamp(0.0, 1.0);
-        
+
         // Create a bounce effect
-        final opacity = adjustedValue < 0.5 
-            ? 0.4 + (adjustedValue * 1.2) 
+        final opacity = adjustedValue < 0.5
+            ? 0.4 + (adjustedValue * 1.2)
             : 1.0 - (adjustedValue - 0.5) * 1.2;
-        
+
         final scale = adjustedValue < 0.5
             ? 0.8 + (adjustedValue * 0.8)
             : 1.2 - (adjustedValue - 0.5) * 0.8;
-        
+
         return Transform.scale(
           scale: scale.clamp(0.8, 1.2),
           child: Opacity(
@@ -640,11 +696,11 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
   Widget _buildMapPreview(Map<String, dynamic> locationData) {
     final center = locationData['center'] as Map<String, dynamic>?;
     final area = locationData['area'] as Map<String, dynamic>?;
-    
+
     if (center == null) return const SizedBox.shrink();
-    
+
     final acres = area?['acres'] as double? ?? 0.0;
-    
+
     return InkWell(
       onTap: () => _showLocationMapBottomSheet(locationData),
       child: Container(
@@ -663,11 +719,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                 color: AppColors.primary1.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.map,
-                color: AppColors.primary1,
-                size: 32,
-              ),
+              child: const Icon(Icons.map, color: AppColors.primary1, size: 32),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -696,10 +748,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.primary1,
-            ),
+            const Icon(Icons.chevron_right, color: AppColors.primary1),
           ],
         ),
       ),
@@ -710,15 +759,15 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
     final center = locationData['center'] as Map<String, dynamic>?;
     final polygonPoints = locationData['polygon_points'] as List?;
     final area = locationData['area'] as Map<String, dynamic>?;
-    
+
     if (center == null) return;
-    
+
     final latitude = center['latitude'] as double;
     final longitude = center['longitude'] as double;
     final acres = area?['acres'] as double? ?? 0.0;
     final squareMeters = area?['square_meters'] as double? ?? 0.0;
     final hectares = area?['hectares'] as double? ?? 0.0;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -747,10 +796,13 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -791,9 +843,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   ],
                 ),
               ),
-              
+
               const Divider(height: 1),
-              
+
               // Map view
               Expanded(
                 child: GoogleMap(
@@ -812,10 +864,12 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                           Polygon(
                             polygonId: const PolygonId('researched_area'),
                             points: polygonPoints
-                                .map<LatLng>((point) => LatLng(
-                                      point['latitude'] as double,
-                                      point['longitude'] as double,
-                                    ))
+                                .map<LatLng>(
+                                  (point) => LatLng(
+                                    point['latitude'] as double,
+                                    point['longitude'] as double,
+                                  ),
+                                )
                                 .toList(),
                             fillColor: AppColors.primary1.withOpacity(0.3),
                             strokeColor: AppColors.primary1,
@@ -828,7 +882,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   mapToolbarEnabled: false,
                 ),
               ),
-              
+
               // Area info
               Container(
                 padding: const EdgeInsets.all(24),
@@ -849,7 +903,10 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                       children: [
                         _buildAreaInfo('Acres', acres.toStringAsFixed(2)),
                         _buildAreaInfo('Hectares', hectares.toStringAsFixed(2)),
-                        _buildAreaInfo('Sq Meters', squareMeters.toStringAsFixed(0)),
+                        _buildAreaInfo(
+                          'Sq Meters',
+                          squareMeters.toStringAsFixed(0),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -879,10 +936,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: AppTextStyles.subTitle(),
-        ),
+        Text(label, style: AppTextStyles.subTitle()),
       ],
     );
   }
@@ -942,7 +996,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    locations.length == 1 ? 'Location Mentioned' : '${locations.length} Locations Mentioned',
+                    locations.length == 1
+                        ? 'Location Mentioned'
+                        : '${locations.length} Locations Mentioned',
                     style: AppTextStyles.regularTextBold().copyWith(
                       color: AppColors.text1,
                     ),
@@ -952,7 +1008,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                     locations.length == 1
                         ? locations[0]['name']
                         : locations.map((l) => l['name']).take(2).join(', ') +
-                            (locations.length > 2 ? '...' : ''),
+                              (locations.length > 2 ? '...' : ''),
                     style: AppTextStyles.subTitle(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -968,10 +1024,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.primary1,
-            ),
+            const Icon(Icons.chevron_right, color: AppColors.primary1),
           ],
         ),
       ),
@@ -980,23 +1033,23 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
 
   void _showLocationsMapBottomSheet(List<Map<String, dynamic>> locations) {
     if (locations.isEmpty) return;
-    
+
     // Calculate bounds to show all locations
     double minLat = locations[0]['latitude'];
     double maxLat = locations[0]['latitude'];
     double minLng = locations[0]['longitude'];
     double maxLng = locations[0]['longitude'];
-    
+
     for (final loc in locations) {
       minLat = minLat < loc['latitude'] ? minLat : loc['latitude'];
       maxLat = maxLat > loc['latitude'] ? maxLat : loc['latitude'];
       minLng = minLng < loc['longitude'] ? minLng : loc['longitude'];
       maxLng = maxLng > loc['longitude'] ? maxLng : loc['longitude'];
     }
-    
+
     final centerLat = (minLat + maxLat) / 2;
     final centerLng = (minLng + maxLng) / 2;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1025,10 +1078,13 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -1049,7 +1105,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            locations.length == 1 ? 'Location' : '${locations.length} Locations',
+                            locations.length == 1
+                                ? 'Location'
+                                : '${locations.length} Locations',
                             style: AppTextStyles.titleMedium().copyWith(
                               fontSize: 20,
                             ),
@@ -1069,9 +1127,9 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   ],
                 ),
               ),
-              
+
               const Divider(height: 1),
-              
+
               // Map view
               Expanded(
                 child: GoogleMap(
@@ -1085,11 +1143,11 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                     return Marker(
                       markerId: MarkerId('location_$index'),
                       position: LatLng(loc['latitude'], loc['longitude']),
-                      infoWindow: InfoWindow(
-                        title: loc['name'],
-                      ),
+                      infoWindow: InfoWindow(title: loc['name']),
                       icon: BitmapDescriptor.defaultMarkerWithHue(
-                        index == 0 ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
+                        index == 0
+                            ? BitmapDescriptor.hueGreen
+                            : BitmapDescriptor.hueRed,
                       ),
                     );
                   }).toSet(),
@@ -1098,7 +1156,7 @@ class _ResearchChatState extends ConsumerState<ResearchChat> {
                   mapToolbarEnabled: false,
                 ),
               ),
-              
+
               // Locations list
               Container(
                 padding: const EdgeInsets.all(24),
