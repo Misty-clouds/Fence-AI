@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, model = 'gpt-4-turbo-preview', temperature = 0.7 } = body;
+    const { messages, model = 'gpt-4-turbo-preview', temperature = 0.7, stream = false } = body;
 
     // Validate request
     if (!messages || !Array.isArray(messages)) {
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         model,
         messages,
         temperature,
+        stream,
       }),
     });
 
@@ -51,6 +52,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Handle streaming response
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          const reader = response.body?.getReader();
+          if (!reader) {
+            controller.close();
+            return;
+          }
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
+            }
+          } catch (error) {
+            console.error('Streaming error:', error);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // Handle non-streaming response
     const data = await response.json();
     
     return NextResponse.json({

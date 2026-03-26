@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -9,11 +10,12 @@ class ChatAIService {
   ChatAIService()
     : _serverUrl = dotenv.env['SERVER_URL'] ?? 'http://localhost:3000';
 
-  /// Generate AI response for continued chat about land, agriculture, and real estate
+  /// Generate AI response with streaming support
   /// Returns both the response text and detected locations (if any)
   Future<Map<String, dynamic>> generateChatResponse({
     required String userMessage,
     required List<Map<String, dynamic>> conversationHistory,
+    Function(String)? onStream,
   }) async {
     try {
       // Prepare messages for OpenAI
@@ -59,7 +61,20 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
         {'role': 'user', 'content': userMessage},
       ];
 
-      final response = await _callOpenAI(messages);
+      String response;
+
+      if (onStream != null) {
+        try {
+          response = await _callOpenAIStream(messages, onStream);
+          if (response.isEmpty) {
+            response = await _callOpenAI(messages);
+          }
+        } catch (e) {
+          response = await _callOpenAI(messages);
+        }
+      } else {
+        response = await _callOpenAI(messages);
+      }
 
       // Extract locations from response
       final locations = _extractLocations(response);
@@ -99,11 +114,83 @@ Remember: If it relates to LAND, HOUSING, PROPERTY, or REAL ESTATE in any way, y
     return text.replaceAll(RegExp(r'\[LOCATION:\s*[^\]]+\]'), '').trim();
   }
 
-  /// Call server AI proxy endpoint (secure)
+  /// Call server AI proxy endpoint with streaming support
+  Future<String> _callOpenAIStream(
+    List<Map<String, dynamic>> messages,
+    Function(String) onStream,
+  ) async {
+    try {
+      final requestBody = {
+        'messages': messages,
+        'model': 'gpt-4-turbo-preview',
+        'temperature': 0.7,
+        'stream': true,
+      };
+
+      final request = http.Request(
+        'POST',
+        Uri.parse('$_serverUrl/api/ai/chat'),
+      );
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      });
+      request.body = jsonEncode(requestBody);
+
+      final streamedResponse = await request.send();
+
+      if (streamedResponse.statusCode != 200) {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        throw Exception(
+          'Server API error: ${streamedResponse.statusCode} - $errorBody',
+        );
+      }
+
+      final fullResponse = StringBuffer();
+      String buffer = '';
+
+      await for (var chunk in streamedResponse.stream.transform(utf8.decoder)) {
+        buffer += chunk;
+        final lines = buffer.split('\n');
+
+        buffer = lines.removeLast();
+
+        for (var line in lines) {
+          line = line.trim();
+          if (line.isEmpty) continue;
+
+          if (line.startsWith('data: ')) {
+            final data = line.substring(6).trim();
+            if (data == '[DONE]') {
+              continue;
+            }
+
+            try {
+              final json = jsonDecode(data);
+              final delta = json['choices']?[0]?['delta'];
+              final content = delta?['content'];
+
+              if (content != null && content.isNotEmpty) {
+                fullResponse.write(content);
+                onStream(fullResponse.toString());
+              }
+            } catch (e) {
+              // Skip malformed chunks
+            }
+          }
+        }
+      }
+
+      final result = fullResponse.toString();
+      return result;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Call server AI proxy endpoint (non-streaming fallback)
   Future<String> _callOpenAI(List<Map<String, dynamic>> messages) async {
     try {
-      print('🤖 Calling server AI proxy...');
-
       final requestBody = {
         'messages': messages,
         'model': 'gpt-4-turbo-preview',
