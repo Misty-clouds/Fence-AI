@@ -143,6 +143,44 @@ class MapService {
     }
   }
 
+  // Get enriched location data for AI analysis (includes area info)
+  Future<Map<String, dynamic>> getEnrichedLocationDataForAI({
+    required double latitude,
+    required double longitude,
+    required double area,
+  }) async {
+    final data = await getComprehensiveLocationData(
+      latitude: latitude,
+      longitude: longitude,
+    );
+    return {
+      ...data,
+      'area_square_meters': area,
+      'area_acres': area / 4046.86,
+      'area_hectares': area / 10000,
+    };
+  }
+
+  // Search for places by text query
+  Future<List<Map<String, dynamic>>> searchPlaces(String query) async {
+    try {
+      final results = await _apiService.geocode(address: query);
+      return results.map<Map<String, dynamic>>((result) {
+        final location = result['geometry']?['location'] ?? {};
+        return {
+          'name': result['formatted_address'] ?? query,
+          'formatted_address': result['formatted_address'],
+          'latitude': location['lat'],
+          'longitude': location['lng'],
+          'place_id': result['place_id'],
+          'types': result['types'],
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception('Error searching places: $e');
+    }
+  }
+
   // Extract location data from geocoding result
   Map<String, dynamic> _extractLocationData(
     Map<String, dynamic> result,
