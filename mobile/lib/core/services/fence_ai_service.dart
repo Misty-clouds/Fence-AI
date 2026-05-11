@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'map_service.dart';
+import 'package:fence_ai/features/map/data/services/map_service.dart';
 
 class FenceAIService {
   final String _serverUrl;

@@ -1,11 +1,4 @@
-import 'package:fence_ai/auth/pages/authgate.dart';
-import 'package:fence_ai/auth/pages/sign_in.dart';
-import 'package:fence_ai/auth/pages/sign_up.dart';
-import 'package:fence_ai/auth/pages/forgot_password.dart';
-import 'package:fence_ai/auth/pages/reset_password.dart';
-import 'package:fence_ai/auth/services/deeplink_service.dart';
-import 'package:fence_ai/view/pages/onboarding/role_selection.dart';
-import 'package:fence_ai/constants/styles/theme.dart';
+import 'package:fence_ai/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,82 +6,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
-  
-  // Initialize Supabase
+
+  await dotenv.load(fileName: '.env');
+
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL'] ?? '',
     anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
   );
-  
-  runApp(const ProviderScope(child: MyApp()));
+
+  runApp(const ProviderScope(child: App()));
 }
-
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  final _deepLinkService = DeepLinkService();
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize deep links after first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _deepLinkService.initialize(context);
-    });
-  }
-
-  @override
-  void dispose() {
-    _deepLinkService.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Fence AI',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const AuthGate(),
-      onGenerateRoute: (settings) {
-        switch (settings.name) {
-          case '/sign-in':
-            return MaterialPageRoute(
-              builder: (context) => const SignInPage(),
-            );
-          case '/role-selection':
-            return MaterialPageRoute(
-              builder: (context) => const RoleSelectionPage(),
-            );
-          case '/signup':
-            return MaterialPageRoute(
-              builder: (context) => const SignUpPage(),
-            );
-          case '/forgot-password':
-            return MaterialPageRoute(
-              builder: (context) => const ForgotPasswordPage(),
-            );
-          case '/reset-password':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return MaterialPageRoute(
-              builder: (context) => ResetPasswordPage(
-                email: args?['email'],
-                token: args?['token'],
-              ),
-            );
-          default:
-            return null;
-        }
-      },
-    );
-  }
-}
-
